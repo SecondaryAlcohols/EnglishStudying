@@ -1,3 +1,13 @@
+### Android / Gradle ###
+build/
+.gradle/
+local.properties
+captures/
+*.apk
+*.aab
+*.jks
+*.keystore
+
 ### IntelliJ IDEA ###
 out/
 !**/src/main/**/out/
@@ -30,3 +40,5 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+### IDE 配置（含本机绝对路径，不提交）
+.idea/
