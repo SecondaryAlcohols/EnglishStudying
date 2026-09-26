@@ -1,6 +1,7 @@
 package com.alcohol.englishstudying.data.local
 
 import androidx.room.TypeConverter
+import com.alcohol.englishstudying.domain.model.WordRelationType
 import com.alcohol.englishstudying.domain.srs.CardState
 import com.alcohol.englishstudying.domain.srs.Rating
 
@@ -23,4 +24,18 @@ class Converters {
     @TypeConverter
     fun stringToRating(value: String?): Rating =
         Rating.fromNameOrNull(value) ?: Rating.AGAIN
+
+    @TypeConverter
+    fun relationTypeToString(value: WordRelationType): String = value.name
+
+    @TypeConverter
+    fun stringToRelationType(value: String?): WordRelationType =
+        WordRelationType.fromNameOrNull(value) ?: WordRelationType.FORM
+
+    @TypeConverter
+    fun relationSourceToString(value: RelationSource): String = value.name
+
+    @TypeConverter
+    fun stringToRelationSource(value: String?): RelationSource =
+        RelationSource.fromNameOrNull(value) ?: RelationSource.AUTO
 }

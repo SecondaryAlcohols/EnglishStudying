@@ -25,7 +25,13 @@ enum class CardState {
     REVIEW,
 
     /** 遗忘次数过多被自动挂起，不再出现在每日队列里，需手动恢复。 */
-    SUSPENDED;
+    SUSPENDED,
+
+    /** 用户标记「太简单」，移出学习；在词库里移出名单后恢复。 */
+    TOO_EASY,
+
+    /** 用户标记「太难」，移出学习；在词库里移出名单后恢复。 */
+    TOO_HARD;
 
     companion object {
         fun fromNameOrNull(name: String?): CardState? =

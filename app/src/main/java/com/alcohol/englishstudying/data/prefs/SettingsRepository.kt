@@ -46,15 +46,24 @@ class SettingsRepository(private val context: Context) {
                 ?.takeIf { it.isNotEmpty() }
                 ?: defaults.learningStepsMinutes,
             graduatingIntervalDays = prefs[Keys.GRADUATING_INTERVAL] ?: defaults.graduatingIntervalDays,
-            easyIntervalDays = prefs[Keys.EASY_INTERVAL] ?: defaults.easyIntervalDays,
             startingEase = prefs[Keys.STARTING_EASE] ?: defaults.startingEase,
-            easyBonus = prefs[Keys.EASY_BONUS] ?: defaults.easyBonus,
             hardMultiplier = prefs[Keys.HARD_MULTIPLIER] ?: defaults.hardMultiplier,
             intervalModifier = prefs[Keys.INTERVAL_MODIFIER] ?: defaults.intervalModifier,
             minIntervalDays = prefs[Keys.MIN_INTERVAL] ?: defaults.minIntervalDays,
             maxIntervalDays = prefs[Keys.MAX_INTERVAL] ?: defaults.maxIntervalDays,
             leechThreshold = prefs[Keys.LEECH_THRESHOLD] ?: defaults.leechThreshold,
-            studyDeckId = prefs[Keys.STUDY_DECK_ID]?.takeIf { it != NO_DECK }
+            studyDeckId = prefs[Keys.STUDY_DECK_ID]?.takeIf { it != NO_DECK },
+            groupSize = prefs[Keys.GROUP_SIZE] ?: defaults.groupSize,
+            newWordMix = prefs[Keys.NEW_WORD_MIX]
+                ?.split(':')
+                ?.mapNotNull { it.trim().toIntOrNull() }
+                ?.takeIf { it.size == 3 && it.sum() > 0 }
+                ?: defaults.newWordMix,
+            weightedDeckIds = prefs[Keys.WEIGHTED_DECK_IDS]
+                ?.split(',')
+                ?.mapNotNull { it.trim().toLongOrNull() }
+                ?.takeIf { it.isNotEmpty() }
+                ?: defaults.weightedDeckIds
         ).sanitized()
     }
 
@@ -67,6 +76,11 @@ class SettingsRepository(private val context: Context) {
         prefs[Keys.HIDE_HINTS] ?: true
     }
 
+    /** 组队列时是否把同一组变形的词排到一起连续背。 */
+    val groupRelatedWords: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.GROUP_RELATED] ?: true
+    }
+
     suspend fun setDailyNewLimit(value: Int) = putInt(Keys.DAILY_NEW_LIMIT, value)
     suspend fun setDailyReviewLimit(value: Int) = putInt(Keys.DAILY_REVIEW_LIMIT, value)
     suspend fun setNewWordOrder(value: NewWordOrder) = putString(Keys.NEW_WORD_ORDER, value.name)
@@ -74,14 +88,21 @@ class SettingsRepository(private val context: Context) {
         putString(Keys.LEARNING_STEPS, steps.joinToString(","))
 
     suspend fun setGraduatingInterval(value: Double) = putDouble(Keys.GRADUATING_INTERVAL, value)
-    suspend fun setEasyInterval(value: Double) = putDouble(Keys.EASY_INTERVAL, value)
     suspend fun setStartingEase(value: Double) = putDouble(Keys.STARTING_EASE, value)
-    suspend fun setEasyBonus(value: Double) = putDouble(Keys.EASY_BONUS, value)
     suspend fun setHardMultiplier(value: Double) = putDouble(Keys.HARD_MULTIPLIER, value)
     suspend fun setIntervalModifier(value: Double) = putDouble(Keys.INTERVAL_MODIFIER, value)
     suspend fun setMinInterval(value: Double) = putDouble(Keys.MIN_INTERVAL, value)
     suspend fun setMaxInterval(value: Double) = putDouble(Keys.MAX_INTERVAL, value)
     suspend fun setLeechThreshold(value: Int) = putInt(Keys.LEECH_THRESHOLD, value)
+    suspend fun setGroupSize(value: Int) = putInt(Keys.GROUP_SIZE, value)
+
+    /** 难度混合比例「易:中:难」，存成 5:3:2 这样的字符串。 */
+    suspend fun setNewWordMix(value: List<Int>) =
+        putString(Keys.NEW_WORD_MIX, value.joinToString(":"))
+
+    /** 「按词表比例」参与抽取的词表 id，存成 3,4,5 这样的字符串；空列表即不限制。 */
+    suspend fun setWeightedDeckIds(ids: List<Long>) =
+        putString(Keys.WEIGHTED_DECK_IDS, ids.joinToString(","))
 
     /** null 表示学习全部词库。 */
     suspend fun setStudyDeckId(value: Long?) {
@@ -95,6 +116,8 @@ class SettingsRepository(private val context: Context) {
         putString(Keys.CARD_FIELDS, encodeCardFields(config))
 
     suspend fun setHideHintsUntilRevealed(value: Boolean) = putBoolean(Keys.HIDE_HINTS, value)
+
+    suspend fun setGroupRelatedWords(value: Boolean) = putBoolean(Keys.GROUP_RELATED, value)
 
     /** 只重置算法参数，不动词库与学习进度。 */
     suspend fun resetSrsSettings() {
@@ -123,23 +146,25 @@ class SettingsRepository(private val context: Context) {
         val NEW_WORD_ORDER = stringPreferencesKey("new_word_order")
         val LEARNING_STEPS = stringPreferencesKey("learning_steps")
         val GRADUATING_INTERVAL = doublePreferencesKey("graduating_interval")
-        val EASY_INTERVAL = doublePreferencesKey("easy_interval")
         val STARTING_EASE = doublePreferencesKey("starting_ease")
-        val EASY_BONUS = doublePreferencesKey("easy_bonus")
         val HARD_MULTIPLIER = doublePreferencesKey("hard_multiplier")
         val INTERVAL_MODIFIER = doublePreferencesKey("interval_modifier")
         val MIN_INTERVAL = doublePreferencesKey("min_interval")
         val MAX_INTERVAL = doublePreferencesKey("max_interval")
         val LEECH_THRESHOLD = intPreferencesKey("leech_threshold")
+        val GROUP_SIZE = intPreferencesKey("group_size")
+        val NEW_WORD_MIX = stringPreferencesKey("new_word_mix")
+        val WEIGHTED_DECK_IDS = stringPreferencesKey("weighted_deck_ids")
         val STUDY_DECK_ID = longPreferencesKey("study_deck_id")
         val CARD_FIELDS = stringPreferencesKey("card_fields")
         val HIDE_HINTS = booleanPreferencesKey("hide_hints")
+        val GROUP_RELATED = booleanPreferencesKey("group_related_words")
 
         val srsKeys = listOf(
             DAILY_NEW_LIMIT, DAILY_REVIEW_LIMIT, NEW_WORD_ORDER, LEARNING_STEPS,
-            GRADUATING_INTERVAL, EASY_INTERVAL, STARTING_EASE, EASY_BONUS,
-            HARD_MULTIPLIER, INTERVAL_MODIFIER, MIN_INTERVAL, MAX_INTERVAL,
-            LEECH_THRESHOLD
+            GRADUATING_INTERVAL, STARTING_EASE, HARD_MULTIPLIER,
+            INTERVAL_MODIFIER, MIN_INTERVAL, MAX_INTERVAL,
+            LEECH_THRESHOLD, GROUP_SIZE, NEW_WORD_MIX, WEIGHTED_DECK_IDS
         )
     }
 

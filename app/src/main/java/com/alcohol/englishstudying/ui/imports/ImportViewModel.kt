@@ -15,6 +15,7 @@ import com.alcohol.englishstudying.data.imports.ParseOutcome
 import com.alcohol.englishstudying.data.imports.WordFileReader
 import com.alcohol.englishstudying.data.imports.WordImporter
 import com.alcohol.englishstudying.data.repo.DeckRepository
+import com.alcohol.englishstudying.data.repo.RelationRepository
 import com.alcohol.englishstudying.di.AppContainer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,7 +43,8 @@ data class ImportUiState(
 class ImportViewModel(
     private val fileReader: WordFileReader,
     private val importer: WordImporter,
-    private val deckRepository: DeckRepository
+    private val deckRepository: DeckRepository,
+    private val relationRepository: RelationRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ImportUiState())
@@ -139,7 +141,11 @@ class ImportViewModel(
             _state.update { it.copy(busy = true, error = null) }
             runCatching {
                 val deckName = _state.value.deckName.trim().ifEmpty { null }
-                importer.import(preview.rows(), defaultDeckName = deckName)
+                importer.import(preview.rows(), defaultDeckName = deckName).also {
+                    // 导完立刻重算关联，否则新导入的 synonyms / roots 要等用户
+                    // 手动去设置页点一次「重建」才生效，而用户不会知道有这一步
+                    relationRepository.rebuild()
+                }
             }.onSuccess { result ->
                 _state.update {
                     it.copy(busy = false, result = result, step = ImportStep.DONE, error = null)
@@ -165,7 +171,8 @@ class ImportViewModel(
                 ImportViewModel(
                     fileReader = container.fileReader,
                     importer = container.importer,
-                    deckRepository = container.decks
+                    deckRepository = container.decks,
+                    relationRepository = container.relations
                 )
             }
         }

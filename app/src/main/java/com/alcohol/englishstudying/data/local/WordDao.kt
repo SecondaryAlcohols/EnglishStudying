@@ -121,6 +121,21 @@ interface WordDao {
     )
     fun observeNewCount(deckId: Long?): Flow<Int>
 
+    /**
+     * 范围内全部未学词的 id 和重要度（轻量行，不拉整个词条）。
+     * 供「按难度混合」在全量上做三等分 —— 只取头部一小段的话，
+     * 三档全是高重要度词，难度混合名存实亡。
+     */
+    @Query(
+        """
+        SELECT id, frequency FROM words
+        WHERE id NOT IN (SELECT wordId FROM review_states)
+          AND (:deckId IS NULL OR id IN (SELECT wordId FROM deck_words WHERE deckId = :deckId))
+        ORDER BY frequency DESC, id ASC
+        """
+    )
+    suspend fun unlearnedFrequencies(deckId: Long?): List<UnlearnedFrequency>
+
     @Query("SELECT DISTINCT tags FROM words WHERE tags IS NOT NULL AND tags != ''")
     suspend fun allTagStrings(): List<String>
 
@@ -142,3 +157,9 @@ interface WordDao {
     @Query("DELETE FROM words WHERE id = :id")
     suspend fun deleteById(id: Long)
 }
+
+/** [WordDao.unlearnedFrequencies] 的轻量结果行。 */
+data class UnlearnedFrequency(
+    val id: Long,
+    val frequency: Int
+)

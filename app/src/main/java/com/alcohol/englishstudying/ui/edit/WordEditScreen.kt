@@ -1,5 +1,6 @@
 package com.alcohol.englishstudying.ui.edit
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -9,12 +10,19 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -22,6 +30,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -38,10 +48,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.alcohol.englishstudying.data.local.RelatedWord
+import com.alcohol.englishstudying.data.local.WordListRow
 import com.alcohol.englishstudying.di.AppContainer
+import com.alcohol.englishstudying.domain.model.WordRelationType
 import com.alcohol.englishstudying.ui.components.SectionHeader
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -143,6 +157,12 @@ fun WordEditScreen(
 
             SectionHeader("其他")
             DraftField(
+                label = "近义词",
+                value = state.draft.synonyms,
+                singleLine = false,
+                hint = "多个用顿号或分号分隔，例：effect；influence。只有库中存在的词才会变成可点击的关联"
+            ) { v -> viewModel.update { it.copy(synonyms = v) } }
+            DraftField(
                 label = "例句",
                 value = state.draft.examples,
                 singleLine = false,
@@ -159,6 +179,32 @@ fun WordEditScreen(
                 hint = "数字越大越靠前，用于「按重要度优先」抽新词",
                 keyboardType = KeyboardType.Number
             ) { v -> viewModel.update { it.copy(frequency = v) } }
+
+            if (!state.isNew) {
+                SectionHeader("关联词")
+                Text(
+                    "同根词和变形由「重建词语关联」自动推导，近义词来自上面的近义词列。" +
+                        "这里可以手工补充 —— 手工加的不受重建影响。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                WordRelationType.entries.forEach { type ->
+                    RelationSection(
+                        title = type.displayName,
+                        peers = state.relations.filter { it.type == type },
+                        onRemove = { viewModel.removeRelation(it, type) }
+                    )
+                }
+                OutlinedButton(
+                    onClick = viewModel::openAddRelation,
+                    modifier = Modifier.padding(top = 8.dp)
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("添加关联")
+                }
+            }
 
             if (state.decks.isNotEmpty()) {
                 SectionHeader("所属词表")
@@ -191,6 +237,18 @@ fun WordEditScreen(
         }
     }
 
+    if (state.addingRelation) {
+        AddRelationDialog(
+            query = state.searchQuery,
+            type = state.newRelationType,
+            results = state.searchResults,
+            onQueryChange = viewModel::setSearchQuery,
+            onTypeChange = viewModel::setNewRelationType,
+            onPick = viewModel::addRelation,
+            onDismiss = viewModel::closeAddRelation
+        )
+    }
+
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
@@ -209,6 +267,119 @@ fun WordEditScreen(
             }
         )
     }
+}
+
+/** 一类关系的一行：标题 + 可删除的 chip，没有关联时显示一句占位。 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun RelationSection(
+    title: String,
+    peers: List<RelatedWord>,
+    onRemove: (Long) -> Unit
+) {
+    Column(Modifier.padding(top = 10.dp)) {
+        Text(
+            title,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(4.dp))
+        if (peers.isEmpty()) {
+            Text(
+                "（暂无）",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline
+            )
+        } else {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                peers.forEach { peer ->
+                    InputChip(
+                        selected = false,
+                        onClick = { onRemove(peer.word.id) },
+                        label = { Text(peer.word.headword) },
+                        trailingIcon = {
+                            Icon(
+                                Icons.Filled.Close,
+                                contentDescription = "删除与 ${peer.word.headword} 的关联",
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 添加关联：先选关系类型，再搜库里的词点一下。
+ *
+ * 类型放在上面而不是「每个词配三个按钮」：一次只想加一条，先定类型能让结果行
+ * 保持单一点击目标，手机上更好点。
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun AddRelationDialog(
+    query: String,
+    type: WordRelationType,
+    results: List<WordListRow>,
+    onQueryChange: (String) -> Unit,
+    onTypeChange: (WordRelationType) -> Unit,
+    onPick: (Long) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("添加关联") },
+        text = {
+            Column {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    WordRelationType.entries.forEach { option ->
+                        FilterChip(
+                            selected = option == type,
+                            onClick = { onTypeChange(option) },
+                            label = { Text(option.displayName) }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("搜索词库") }
+                )
+                Spacer(Modifier.height(8.dp))
+                if (results.isEmpty()) {
+                    Text(
+                        if (query.isBlank()) "输入关键词开始搜索" else "没有匹配的词",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    LazyColumn(Modifier.heightIn(max = 240.dp)) {
+                        items(results, key = { it.word.id }) { row ->
+                            ListItem(
+                                modifier = Modifier.clickable { onPick(row.word.id) },
+                                headlineContent = { Text(row.word.headword) },
+                                supportingContent = row.word.meaningList.firstOrNull()?.let {
+                                    { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss) { Text("取消") }
+        }
+    )
 }
 
 @Composable

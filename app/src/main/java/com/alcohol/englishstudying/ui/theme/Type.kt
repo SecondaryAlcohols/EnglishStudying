@@ -41,3 +41,11 @@ val HeadwordStyle = TextStyle(
     fontSize = 34.sp,
     lineHeight = 42.sp
 )
+
+/** 作答正面的居中大字。比卡片内的大一号，用来撑起整屏。 */
+val FrontHeadwordStyle = TextStyle(
+    fontFamily = FontFamily.Default,
+    fontWeight = FontWeight.Bold,
+    fontSize = 40.sp,
+    lineHeight = 48.sp
+)

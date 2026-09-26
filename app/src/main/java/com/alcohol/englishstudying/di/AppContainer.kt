@@ -6,6 +6,7 @@ import com.alcohol.englishstudying.data.imports.WordImporter
 import com.alcohol.englishstudying.data.local.AppDatabase
 import com.alcohol.englishstudying.data.prefs.SettingsRepository
 import com.alcohol.englishstudying.data.repo.DeckRepository
+import com.alcohol.englishstudying.data.repo.RelationRepository
 import com.alcohol.englishstudying.data.repo.StudyRepository
 import com.alcohol.englishstudying.data.repo.WordRepository
 
@@ -17,13 +18,15 @@ import com.alcohol.englishstudying.data.repo.WordRepository
  */
 class AppContainer(context: Context) {
 
-    private val appContext: Context = context.applicationContext
+    /** 应用级 Context，供需要写文件 / 读系统服务的组件使用。 */
+    val appContext: Context = context.applicationContext
 
     val database: AppDatabase by lazy { AppDatabase.get(appContext) }
     val settings: SettingsRepository by lazy { SettingsRepository(appContext) }
     val words: WordRepository by lazy { WordRepository(database) }
     val decks: DeckRepository by lazy { DeckRepository(database) }
     val study: StudyRepository by lazy { StudyRepository(database) }
+    val relations: RelationRepository by lazy { RelationRepository(database) }
     val importer: WordImporter by lazy { WordImporter(database) }
     val fileReader: WordFileReader by lazy { WordFileReader(appContext) }
 }

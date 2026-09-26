@@ -8,6 +8,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.alcohol.englishstudying.data.local.DeckWithCount
 import com.alcohol.englishstudying.data.local.WordListRow
 import com.alcohol.englishstudying.data.repo.DeckRepository
+import com.alcohol.englishstudying.data.repo.StudyRepository
 import com.alcohol.englishstudying.data.repo.WordRepository
 import com.alcohol.englishstudying.di.AppContainer
 import com.alcohol.englishstudying.domain.srs.CardState
@@ -41,7 +42,8 @@ data class LibraryUiState(
 @OptIn(ExperimentalCoroutinesApi::class)
 class LibraryViewModel(
     private val wordRepository: WordRepository,
-    private val deckRepository: DeckRepository
+    private val deckRepository: DeckRepository,
+    private val studyRepository: StudyRepository
 ) : ViewModel() {
 
     private val filters = MutableStateFlow(LibraryFilters())
@@ -76,9 +78,16 @@ class LibraryViewModel(
         viewModelScope.launch { wordRepository.delete(id) }
     }
 
+    /** 太简单/太难名单里的词：移出名单，恢复学习。 */
+    fun resumeExcluded(id: Long) {
+        viewModelScope.launch { studyRepository.resumeExcluded(id) }
+    }
+
     companion object {
         fun factory(container: AppContainer): ViewModelProvider.Factory = viewModelFactory {
-            initializer { LibraryViewModel(container.words, container.decks) }
+            initializer {
+                LibraryViewModel(container.words, container.decks, container.study)
+            }
         }
     }
 }

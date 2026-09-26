@@ -16,6 +16,7 @@ data class ImportedWord(
     val roots: String?,
     val derivations: String?,
     val examples: String?,
+    val synonyms: String?,
     val tags: String?,
     val frequency: Int,
     val deckName: String?
@@ -97,9 +98,10 @@ class WordImporter(
 
         db.withTransaction {
             val existingByLowercase = mutableMapOf<String, WordEntity>()
+            // 分块发查询：一次导入几千行，不分块会撞 SQLite 的绑定变量上限
             accepted.map { it.headword.lowercase() }
                 .distinct()
-                .chunked(SQLITE_BIND_LIMIT)
+                .chunked(AppDatabase.SQLITE_BIND_LIMIT)
                 .forEach { chunk ->
                     db.wordDao().findByLowercaseHeadwords(chunk).forEach { word ->
                         existingByLowercase[word.headword.lowercase()] = word
@@ -181,6 +183,7 @@ class WordImporter(
         roots = value(ImportField.ROOTS),
         derivations = value(ImportField.DERIVATIONS),
         examples = value(ImportField.EXAMPLES),
+        synonyms = value(ImportField.SYNONYMS),
         tags = value(ImportField.TAGS),
         frequency = value(ImportField.FREQUENCY).toFrequency(),
         deckName = value(ImportField.DECK)
@@ -203,6 +206,7 @@ class WordImporter(
         roots = roots,
         derivations = derivations,
         examples = examples,
+        synonyms = synonyms,
         tags = tags,
         frequency = frequency,
         createdAt = timestamp,
@@ -217,6 +221,7 @@ class WordImporter(
         roots = roots ?: existing.roots,
         derivations = derivations ?: existing.derivations,
         examples = examples ?: existing.examples,
+        synonyms = synonyms ?: existing.synonyms,
         tags = tags ?: existing.tags,
         frequency = if (frequency != 0) frequency else existing.frequency,
         updatedAt = timestamp
@@ -225,8 +230,5 @@ class WordImporter(
     companion object {
         private const val MAX_HEADWORD_LENGTH = 100
         private const val MAX_FIELD_LENGTH = 8000
-
-        /** SQLite 默认的变量上限是 999，留出余量。 */
-        private const val SQLITE_BIND_LIMIT = 400
     }
 }

@@ -39,6 +39,12 @@ android {
         compose = true
     }
 
+    // 发音库是按词名散装的 mp3（assets/pron/）。MediaPlayer 从 asset 播放要靠
+    // AssetFileDescriptor 拿偏移量，压缩过的 asset 给不出 fd —— 必须保持不压缩
+    androidResources {
+        noCompress += "mp3"
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"

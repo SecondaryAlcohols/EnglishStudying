@@ -1,0 +1,238 @@
+# 近义词组：一行一组，分号分隔。只保留库内存在的词，最多取 3 个。
+# 编写原则：意义相近、常见于考研完形/阅读的替换关系；拿不准的不写。
+important; significant; vital; crucial; essential
+big; large; huge; enormous; massive; tremendous
+small; tiny; little; minor
+good; fine; excellent; outstanding
+bad; poor; awful; terrible
+happy; glad; delighted; pleased; cheerful
+sad; unhappy; depressed; miserable
+angry; mad; furious; annoyed
+afraid; frightened; scared; terrified
+fast; quick; rapid; swift
+slow; gradual
+easy; simple
+difficult; hard; tough
+clever; smart; bright; intelligent; wise
+stupid; foolish; silly
+beautiful; pretty; attractive; handsome
+ugly
+new; fresh; novel
+old; ancient; antique
+young; youthful
+rich; wealthy; plentiful
+poor; needy
+strong; powerful; mighty
+weak; feeble; fragile
+famous; well-known; noted; renowned
+usual; common; ordinary; normal
+special; particular; unique; extraordinary
+strange; odd; weird; peculiar
+same; identical; similar
+different; distinct; diverse; various
+many; numerous; plenty
+few; scarce; rare
+enough; sufficient; adequate
+begin; start; commence
+end; finish; conclude; complete
+stop; cease; halt; quit
+continue; last; persist
+change; alter; vary; shift; transform
+increase; grow; rise; climb; boost
+decrease; reduce; decline; drop; fall
+improve; better; enhance; promote
+develop; advance; progress
+keep; hold; maintain; preserve; retain
+get; obtain; gain; acquire; achieve; attain
+give; offer; provide; supply; grant
+show; demonstrate; reveal; display; indicate
+think; believe; consider; suppose; assume; reckon
+know; realize; recognize; be aware
+see; notice; observe; witness; spot
+look; watch; glance; stare
+say; state; declare; claim; remark; mention
+speak; talk; converse; chat
+tell; inform; notify
+ask; inquire; request; demand
+answer; reply; respond
+help; assist; aid; support
+harm; hurt; injure; wound; damage
+destroy; ruin; damage
+build; construct; establish; set up; found
+make; create; produce; manufacture; generate
+buy; purchase
+sell
+pay; spend; cost; expend
+choose; select; pick; elect
+like; enjoy; love; prefer; favor
+hate; dislike
+want; wish; desire; hope
+need; require; demand; lack
+try; attempt; endeavor; strive
+use; employ; utilize; apply
+allow; permit; let
+forbid; prohibit; ban
+agree; consent; approve
+refuse; reject; decline; deny
+accept; receive; admit
+include; contain; involve; comprise
+exclude
+join; combine; connect; link; unite
+separate; divide; split; part
+mix; blend
+appear; seem; emerge
+disappear; vanish
+happen; occur; take place; arise
+cause; lead to; bring about; result in
+prevent; stop; avoid; block; hinder
+solve; settle; resolve; tackle
+face; confront; encounter; meet
+find; discover; detect
+invent; create
+expect; anticipate; hope
+remember; recall; remind; memorize
+forget; neglect; ignore; overlook
+understand; comprehend; grasp
+learn; study; master
+teach; instruct; educate; train
+explain; illustrate; interpret; clarify
+describe; depict; portray
+express; convey; voice
+discuss; debate; argue
+believe; trust; confidence
+doubt; suspect
+wonder; question
+promise; guarantee; assure; ensure
+warn; caution; alarm
+praise; compliment; applaud
+criticize; blame; condemn; scold
+punish
+reward; award
+respect; admire; honor
+look down upon; despise; scorn; insult
+job; work; occupation; career; profession
+task; assignment; mission
+company; firm; corporation; business; enterprise
+factory; plant; mill
+money; cash; fund; capital
+wealth; fortune; property; asset
+income; salary; wage; pay; earning
+price; cost; charge; fee
+goods; product; commodity
+market; trade; commerce
+customer; client; consumer
+worker; employee; staff
+boss; employer; manager
+law; act; bill; legislation
+rule; regulation; policy
+government; administration; authority
+country; nation; state
+society; community
+people; population; citizen; folk
+human; person; individual
+child; kid; youngster
+adult; grown-up
+teacher; instructor; educator
+student; pupil
+school; college; university; institute
+class; course; lesson
+test; exam; examination; quiz
+study; research; survey; investigation
+result; outcome; consequence; effect
+reason; cause; factor
+method; way; approach; means; technique
+idea; thought; concept; notion
+opinion; view; viewpoint; attitude; stand
+problem; issue; question; trouble
+chance; opportunity
+danger; risk; hazard; threat
+safety; security
+benefit; advantage; profit; gain
+harm; disadvantage; drawback; shortcoming
+purpose; aim; goal; objective; target; intention
+plan; program; project; scheme
+choice; option; alternative
+example; instance; case
+fact; reality; truth
+belief; faith; conviction
+duty; responsibility; obligation
+right; freedom; liberty
+power; force; strength; energy
+ability; capacity; capability; talent
+skill; technique
+knowledge; information
+news; information; message
+story; tale
+book; volume
+word; term; expression
+language; speech; tongue
+mistake; error; fault; blunder
+success; achievement; accomplishment
+failure; defeat
+victory; triumph; win
+war; battle; fight; struggle
+peace; calm; quiet
+disease; illness; sickness; trouble
+doctor; physician; surgeon
+medicine; drug; medication
+patient; sufferer
+health; fitness
+food; meal; diet
+place; site; location; spot; position
+house; home; residence
+building; construction
+city; town; urban
+village; rural
+road; way; path; route
+trip; journey; tour; travel; voyage
+vehicle; car; automobile
+speed; rate; pace; velocity
+size; scale; scope
+amount; quantity; number; sum
+part; portion; section; segment
+whole; entire; total; overall
+form; shape; pattern
+kind; sort; type; category
+quality; property; character
+feature; characteristic; trait
+level; standard; degree
+top; peak; summit; maximum
+bottom; minimum; base; foundation
+center; middle; core; heart
+side; edge; border; boundary
+beginning; origin; source; root
+end; conclusion; terminal
+future; prospect; outlook
+past; history
+present; current
+time; period; era; age; epoch
+moment; instant
+day; date
+year; annual
+often; frequently; constantly; regularly
+always; forever; permanently
+never; seldom; rarely
+soon; shortly; before long
+now; currently; at present
+immediately; at once; instantly; right away
+finally; eventually; at last; ultimately
+suddenly; all at once
+gradually; step by step
+almost; nearly; approximately; about
+maybe; perhaps; possibly; probably
+certainly; surely; definitely; undoubtedly
+really; actually; indeed; truly
+also; too; as well; besides
+however; nevertheless; nonetheless; yet
+therefore; thus; hence; consequently
+moreover; furthermore; in addition; besides
+instead; rather
+although; though; while
+because; since; as; for
+but; yet; however
+if; unless; provided
+so; therefore
+very; quite; rather; fairly
+only; merely; just; simply
+even; still
+especially; particularly; mainly; chiefly

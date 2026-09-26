@@ -142,7 +142,6 @@ fun CardFieldSettingsScreen(
 private val ALWAYS_EXPANDED = setOf(
     CardField.HEADWORD,
     CardField.PHONETIC,
-    CardField.PART_OF_SPEECH,
     CardField.MEANINGS,
     CardField.TAGS
 )

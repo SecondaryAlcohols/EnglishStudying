@@ -63,7 +63,9 @@ class Sm2SchedulerTest {
         val next = rate(newCard(), Rating.EASY)
 
         assertEquals(CardState.REVIEW, next.state)
-        assertEquals(defaultSettings.easyIntervalDays, next.intervalDays, 0.001)
+        // 不再是设置项，是 Sm2Scheduler 里的常量（产物里 Rating.EASY 到不了调度器，
+        // 见 StudyRepository.submit 的提前分流），所以这里断言字面值
+        assertEquals(4.0, next.intervalDays, 0.001)
     }
 
     @Test

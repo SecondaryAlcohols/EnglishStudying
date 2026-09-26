@@ -55,6 +55,13 @@ enum class ImportField(
         "标签",
         setOf("tag", "tags", "label", "labels", "category", "标签", "分类", "标记")
     ),
+    SYNONYMS(
+        "近义词",
+        setOf(
+            "synonym", "synonyms", "synonymy", "near", "similar",
+            "近义词", "同义词", "近义", "同义"
+        )
+    ),
     FREQUENCY(
         "重要度",
         setOf("frequency", "freq", "rank", "weight", "importance", "重要度", "词频", "频率", "权重", "序号")

@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.filled.Undo
@@ -52,7 +53,9 @@ import com.alcohol.englishstudying.ui.components.SectionHeader
 private val ORDER_LABELS = listOf(
     NewWordOrder.FREQUENCY to "按重要度",
     NewWordOrder.SEQUENCE to "按入库顺序",
-    NewWordOrder.RANDOM to "随机"
+    NewWordOrder.RANDOM to "随机",
+    NewWordOrder.MIXED to "按难度混合",
+    NewWordOrder.DECK_WEIGHTED to "按词表比例"
 )
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -66,6 +69,8 @@ fun SettingsScreen(
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val hideHints by viewModel.hideHints.collectAsStateWithLifecycle()
+    val groupRelated by viewModel.groupRelated.collectAsStateWithLifecycle()
+    val decks by viewModel.decks.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -130,13 +135,28 @@ fun SettingsScreen(
                     trailingContent = { Text("›", style = MaterialTheme.typography.titleLarge) }
                 )
             }
+            Spacer(Modifier.height(10.dp))
+            Card(Modifier.fillMaxWidth()) {
+                ListItem(
+                    headlineContent = { Text("同一组变形的词放在一起背") },
+                    supportingContent = {
+                        Text(
+                            "开启后，队列里互为变形的词（如 answer / answers / answered）" +
+                                "会连续出现，其余顺序尽量保持不变。改完下次进入学习时生效。"
+                        )
+                    },
+                    trailingContent = {
+                        Switch(checked = groupRelated, onCheckedChange = viewModel::setGroupRelated)
+                    }
+                )
+            }
 
             // ---- 每日计划 ----
             SectionHeader("每日计划")
             ParamField(
                 label = "每日新词上限",
                 value = settings.dailyNewLimit.toDouble(),
-                description = "每天最多引入多少个没学过的词。设 0 表示只复习不学新词。",
+                description = "每天最多引入多少个没学过的词。标为「太简单 / 太难」移出学习的词也占一个名额，设 0 表示只复习不学新词。",
                 isDecimal = false,
                 onCommit = { viewModel.setDailyNewLimit(it.toInt()) }
             )
@@ -161,6 +181,27 @@ fun SettingsScreen(
                     )
                 }
             }
+            if (settings.newWordOrder == NewWordOrder.MIXED) {
+                MixRatioField(
+                    ratio = settings.newWordMix,
+                    onCommit = viewModel::setNewWordMix
+                )
+            }
+            if (settings.newWordOrder == NewWordOrder.DECK_WEIGHTED) {
+                WeightedDeckField(
+                    decks = decks,
+                    selected = settings.weightedDeckIds,
+                    onCommit = viewModel::setWeightedDeckIds
+                )
+            }
+            ParamField(
+                label = "每组词数",
+                value = settings.groupSize.toDouble(),
+                description = "连续作答这么多张卡后弹出一次「单词小结」，" +
+                    "把这组词连词性带释义过一遍再继续。只影响提示节奏，不影响记忆算法。",
+                isDecimal = false,
+                onCommit = { viewModel.setGroupSize(it.toInt()) }
+            )
 
             // ---- 学习步与毕业 ----
             SectionHeader("学习步与毕业")
@@ -175,13 +216,6 @@ fun SettingsScreen(
                 isDecimal = true,
                 onCommit = viewModel::setGraduatingInterval
             )
-            ParamField(
-                label = "「太简单」间隔（天）",
-                value = settings.easyIntervalDays,
-                description = "在新词阶段直接按「太简单」时跳过的天数。",
-                isDecimal = true,
-                onCommit = viewModel::setEasyInterval
-            )
 
             // ---- 算法参数 ----
             SectionHeader("算法参数")
@@ -191,13 +225,6 @@ fun SettingsScreen(
                 description = "每个新词的起始 ease，越大后续间隔涨得越快。常用 2.5。",
                 isDecimal = true,
                 onCommit = viewModel::setStartingEase
-            )
-            ParamField(
-                label = "「太简单」奖励倍数",
-                value = settings.easyBonus,
-                description = "按「太简单」时间隔额外乘以这个数。",
-                isDecimal = true,
-                onCommit = viewModel::setEasyBonus
             )
             ParamField(
                 label = "「模糊」间隔倍数",
@@ -255,6 +282,22 @@ fun SettingsScreen(
                     supportingContent = { Text("词库规模、各状态词数、今日完成情况") },
                     leadingContent = { Icon(Icons.Filled.BarChart, contentDescription = null) },
                     trailingContent = { Text("›", style = MaterialTheme.typography.titleLarge) }
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Card(Modifier.fillMaxWidth()) {
+                ListItem(
+                    headlineContent = { Text("重建词语关联") },
+                    supportingContent = {
+                        Text(
+                            "重新推导同根词、变形、近义词。改了词根或近义词列重新导入后，" +
+                                "点一下让关联跟上。你手工添加的关联不受影响。"
+                        )
+                    },
+                    leadingContent = { Icon(Icons.Filled.Hub, contentDescription = null) },
+                    trailingContent = {
+                        OutlinedButton(onClick = viewModel::rebuildRelations) { Text("重建") }
+                    }
                 )
             }
             Spacer(Modifier.height(10.dp))

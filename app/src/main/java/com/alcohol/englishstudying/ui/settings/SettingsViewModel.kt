@@ -5,7 +5,10 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.alcohol.englishstudying.data.local.DeckWithCount
 import com.alcohol.englishstudying.data.prefs.SettingsRepository
+import com.alcohol.englishstudying.data.repo.DeckRepository
+import com.alcohol.englishstudying.data.repo.RelationRepository
 import com.alcohol.englishstudying.data.repo.StudyRepository
 import com.alcohol.englishstudying.di.AppContainer
 import com.alcohol.englishstudying.domain.srs.NewWordOrder
@@ -19,13 +22,22 @@ import kotlinx.coroutines.launch
 
 class SettingsViewModel(
     private val settingsRepository: SettingsRepository,
-    private val studyRepository: StudyRepository
+    private val studyRepository: StudyRepository,
+    private val relationRepository: RelationRepository,
+    deckRepository: DeckRepository
 ) : ViewModel() {
 
     val settings: StateFlow<SrsSettings> = settingsRepository.srsSettings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SrsSettings.DEFAULT)
 
+    /** 「按词表比例」要列出所有词表供多选，所以这里也订阅一份。 */
+    val decks: StateFlow<List<DeckWithCount>> = deckRepository.observeAll()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     val hideHints: StateFlow<Boolean> = settingsRepository.hideHintsUntilRevealed
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
+    val groupRelated: StateFlow<Boolean> = settingsRepository.groupRelatedWords
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
 
     private val _message = MutableStateFlow<String?>(null)
@@ -36,17 +48,23 @@ class SettingsViewModel(
     fun setNewWordOrder(value: NewWordOrder) = launch { settingsRepository.setNewWordOrder(value) }
     fun setLearningSteps(steps: List<Int>) = launch { settingsRepository.setLearningSteps(steps) }
     fun setGraduatingInterval(value: Double) = launch { settingsRepository.setGraduatingInterval(value) }
-    fun setEasyInterval(value: Double) = launch { settingsRepository.setEasyInterval(value) }
     fun setStartingEase(value: Double) = launch { settingsRepository.setStartingEase(value) }
-    fun setEasyBonus(value: Double) = launch { settingsRepository.setEasyBonus(value) }
     fun setHardMultiplier(value: Double) = launch { settingsRepository.setHardMultiplier(value) }
     fun setIntervalModifier(value: Double) = launch { settingsRepository.setIntervalModifier(value) }
     fun setMinInterval(value: Double) = launch { settingsRepository.setMinInterval(value) }
     fun setMaxInterval(value: Double) = launch { settingsRepository.setMaxInterval(value) }
     fun setLeechThreshold(value: Int) = launch { settingsRepository.setLeechThreshold(value) }
+    fun setGroupSize(value: Int) = launch { settingsRepository.setGroupSize(value) }
+    fun setNewWordMix(value: List<Int>) = launch { settingsRepository.setNewWordMix(value) }
+
+    /** 「按词表比例」参与抽取的词表；传空列表即不限制词表。 */
+    fun setWeightedDeckIds(ids: List<Long>) = launch { settingsRepository.setWeightedDeckIds(ids) }
 
     fun setHideHints(value: Boolean) =
         launch { settingsRepository.setHideHintsUntilRevealed(value) }
+
+    fun setGroupRelated(value: Boolean) =
+        launch { settingsRepository.setGroupRelatedWords(value) }
 
     fun restoreDefaults() {
         launch {
@@ -62,6 +80,24 @@ class SettingsViewModel(
         }
     }
 
+    /**
+     * 重算自动关联。
+     *
+     * 用户改完词根 / 近义词重新导入后需要一个明确的触发点 —— 自动跑的话，
+     * 几千词的库每次启动都要算一遍，而绝大多数时候结果没变。
+     */
+    fun rebuildRelations() {
+        launch {
+            val result = relationRepository.rebuild()
+            _message.value = if (result.total == 0) {
+                "没有推导出任何关联。同根词需要「词根词缀」列，近义词需要「近义词」列。"
+            } else {
+                "关联已重建：同根词 ${result.root}、变形 ${result.form}、" +
+                    "近义词 ${result.synonym}，共 ${result.total} 条"
+            }
+        }
+    }
+
     fun consumeMessage() {
         _message.value = null
     }
@@ -73,7 +109,12 @@ class SettingsViewModel(
     companion object {
         fun factory(container: AppContainer): ViewModelProvider.Factory = viewModelFactory {
             initializer {
-                SettingsViewModel(container.settings, container.study)
+                SettingsViewModel(
+                    settingsRepository = container.settings,
+                    studyRepository = container.study,
+                    relationRepository = container.relations,
+                    deckRepository = container.decks
+                )
             }
         }
     }

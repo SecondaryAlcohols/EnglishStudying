@@ -24,8 +24,11 @@ class Sm2Scheduler(settings: SrsSettings) {
         todayEpochDay: Long,
         nowMillis: Long
     ): SrsState {
-        // 挂起的卡不参与调度，只能由用户在词库里手动恢复
-        if (current.state == CardState.SUSPENDED) return current
+        // 挂起 / 已移出学习（太简单、太难）的卡不参与调度，只能由用户在词库里移出名单恢复
+        if (current.state == CardState.SUSPENDED ||
+            current.state == CardState.TOO_EASY ||
+            current.state == CardState.TOO_HARD
+        ) return current
 
         var ease = current.easeFactor
         var interval = current.intervalDays
@@ -71,7 +74,7 @@ class Sm2Scheduler(settings: SrsSettings) {
 
                 Rating.EASY -> {
                     // 直接跳过剩余学习步毕业
-                    interval = s.easyIntervalDays
+                    interval = EASY_INTERVAL_DAYS
                     repetitions = 1
                     state = CardState.REVIEW
                     due = dueForDays(todayEpochDay, interval)
@@ -105,8 +108,8 @@ class Sm2Scheduler(settings: SrsSettings) {
                 }
 
                 Rating.EASY -> {
-                    interval = if (repetitions == 0) s.easyIntervalDays
-                    else interval * ease * s.easyBonus
+                    interval = if (repetitions == 0) EASY_INTERVAL_DAYS
+                    else interval * ease * EASY_BONUS
                     repetitions += 1
                     due = dueForDays(todayEpochDay, interval)
                 }
@@ -150,6 +153,7 @@ class Sm2Scheduler(settings: SrsSettings) {
 
     private fun formatInterval(state: SrsState, nowMinutes: Long): String = when (state.state) {
         CardState.SUSPENDED -> "挂起"
+        CardState.TOO_EASY, CardState.TOO_HARD -> "移出学习"
         CardState.LEARNING, CardState.NEW -> {
             val minutes = (state.dueAtMinutes - nowMinutes).coerceAtLeast(1L)
             when {
@@ -176,5 +180,17 @@ class Sm2Scheduler(settings: SrsSettings) {
         const val MAX_EASE = 3.0
         private const val EASE_PENALTY_AGAIN = 0.20
         private const val EASE_PENALTY_HARD = 0.15
+
+        /**
+         * 「太简单」的间隔与奖励倍数。
+         *
+         * 这两个原先是可配的设置项，但**设了不会生效**：产物里 `Rating.EASY` 在
+         * `StudyRepository.submit()` 就被截成「移出学习」，根本到不了这个调度器。
+         * 留着两个拧不动的旋钮只会误导，所以从 `SrsSettings` 里删掉、退成常量 ——
+         * SM-2 的四档语义仍然完整表达在这里，将来若真想把「太简单」接回算法，
+         * 把这两行挪回设置即可。
+         */
+        private const val EASY_INTERVAL_DAYS = 4.0
+        private const val EASY_BONUS = 1.3
     }
 }

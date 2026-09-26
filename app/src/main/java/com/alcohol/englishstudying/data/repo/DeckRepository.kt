@@ -45,6 +45,8 @@ class DeckRepository(
 
     suspend fun wordsIn(deckId: Long): List<WordEntity> {
         val ids = db.deckDao().wordIdsIn(deckId)
-        return if (ids.isEmpty()) emptyList() else db.wordDao().getByIds(ids)
+        // 分块：一个词表可以有几千个词（真机上最大的那个 2285 词），整条塞进
+        // id IN (:ids) 会撞 SQLite 的绑定变量上限。chunked 对空列表返回空，无需额外判断。
+        return ids.chunked(AppDatabase.SQLITE_BIND_LIMIT).flatMap { db.wordDao().getByIds(it) }
     }
 }

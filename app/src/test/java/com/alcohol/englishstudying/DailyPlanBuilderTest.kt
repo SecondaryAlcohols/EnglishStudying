@@ -17,7 +17,7 @@ class DailyPlanBuilderTest {
         val fresh = listOf("new1", "new2")
         val settings = SrsSettings(dailyNewLimit = 10, dailyReviewLimit = 10)
 
-        val queue = DailyPlanBuilder.build(due, fresh, settings)
+        val queue = DailyPlanBuilder.build(due, emptyList(), fresh, settings)
 
         assertEquals(listOf("due1", "due2", "new1", "new2"), queue)
     }
@@ -28,7 +28,7 @@ class DailyPlanBuilderTest {
         val fresh = (1..50).map { "new$it" }
         val settings = SrsSettings(dailyNewLimit = 5, dailyReviewLimit = 8)
 
-        val queue = DailyPlanBuilder.build(due, fresh, settings)
+        val queue = DailyPlanBuilder.build(due, emptyList(), fresh, settings)
 
         assertEquals(13, queue.size)
         assertEquals(8, queue.count { it.toString().startsWith("due") })
@@ -39,7 +39,7 @@ class DailyPlanBuilderTest {
     fun `新词上限为零时只复习`() {
         val settings = SrsSettings(dailyNewLimit = 0, dailyReviewLimit = 10)
 
-        val queue = DailyPlanBuilder.build(listOf("due1"), listOf("new1"), settings)
+        val queue = DailyPlanBuilder.build(listOf("due1"), emptyList(), listOf("new1"), settings)
 
         assertEquals(listOf("due1"), queue)
     }
@@ -48,14 +48,19 @@ class DailyPlanBuilderTest {
     fun `复习上限为零时只学新词`() {
         val settings = SrsSettings(dailyNewLimit = 10, dailyReviewLimit = 0)
 
-        val queue = DailyPlanBuilder.build(listOf("due1"), listOf("new1"), settings)
+        val queue = DailyPlanBuilder.build(listOf("due1"), emptyList(), listOf("new1"), settings)
 
         assertEquals(listOf("new1"), queue)
     }
 
     @Test
     fun `两边都空时队列为空`() {
-        val queue = DailyPlanBuilder.build(emptyList<String>(), emptyList<String>(), SrsSettings())
+        val queue = DailyPlanBuilder.build(
+            emptyList<String>(),
+            emptyList(),
+            emptyList(),
+            SrsSettings()
+        )
 
         assertTrue(queue.isEmpty())
     }
@@ -66,9 +71,49 @@ class DailyPlanBuilderTest {
         val due = listOf("最早", "次早", "第三", "第四")
         val settings = SrsSettings(dailyNewLimit = 0, dailyReviewLimit = 2)
 
-        val queue = DailyPlanBuilder.build(due, emptyList(), settings)
+        val queue = DailyPlanBuilder.build(due, emptyList(), emptyList(), settings)
 
         assertEquals(listOf("最早", "次早"), queue)
+    }
+
+    // ---- 复习与学习各自独立限额 ----
+
+    @Test
+    fun `复习卡超额时，当天到期的学习卡仍进队列`() {
+        // 天级间隔落在当天零点、学习步落在「当天零点 + 偏移」，所以排序上复习卡恒在前。
+        // 两者共用一份预算时，这里的两张学习卡会被 200 张复习卡整段挤掉。
+        val review = (1..300).map { "review$it" }
+        val learning = listOf("learn1", "learn2")
+        val settings = SrsSettings(dailyNewLimit = 0, dailyReviewLimit = 200)
+
+        val queue = DailyPlanBuilder.build(review, learning, emptyList(), settings)
+
+        assertEquals(202, queue.size)
+        assertEquals(200, queue.count { it.startsWith("review") })
+        assertEquals(listOf("learn1", "learn2"), queue.takeLast(2))
+    }
+
+    @Test
+    fun `学习卡与复习卡各有独立上限`() {
+        val review = (1..10).map { "review$it" }
+        val learning = (1..10).map { "learn$it" }
+        val settings = SrsSettings(dailyNewLimit = 0, dailyReviewLimit = 3)
+
+        val queue = DailyPlanBuilder.build(review, learning, emptyList(), settings)
+
+        // 3 + 3，不是共用一份预算的 3
+        assertEquals(6, queue.size)
+        assertEquals(3, queue.count { it.startsWith("review") })
+        assertEquals(3, queue.count { it.startsWith("learn") })
+    }
+
+    @Test
+    fun `队列顺序为复习、学习、新词`() {
+        val settings = SrsSettings(dailyNewLimit = 5, dailyReviewLimit = 5)
+
+        val queue = DailyPlanBuilder.build(listOf("r1"), listOf("l1"), listOf("n1"), settings)
+
+        assertEquals(listOf("r1", "l1", "n1"), queue)
     }
 
     @Test

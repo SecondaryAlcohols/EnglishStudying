@@ -40,6 +40,14 @@ data class WordEntity(
     /** 例句，中英成对，多条用 \n 分隔。 */
     val examples: String? = null,
 
+    /**
+     * 近义词，多个用顿号/分号/逗号分隔。
+     *
+     * 与 roots / derivations 一样是自由文本 —— 里面写的词不一定在库里。
+     * 真正可点击跳转的关联在 word_relations 表里，由重建流程从这个列解析出来。
+     */
+    val synonyms: String? = null,
+
     /** 标签，英文逗号分隔。 */
     val tags: String? = null,
 

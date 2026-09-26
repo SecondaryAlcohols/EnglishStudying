@@ -31,6 +31,21 @@ class WordRepository(
 
     suspend fun getById(id: Long): WordEntity? = db.wordDao().getById(id)
 
+    /**
+     * 词名（需已小写）→ 词 id，大小写不敏感，只含库中真实存在的词。
+     * 供「变形」文本把提到的词变成可点击跳转 —— 点不动的词条没有意义。
+     */
+    suspend fun idsByHeadwords(lowercaseHeadwords: Collection<String>): Map<String, Long> {
+        if (lowercaseHeadwords.isEmpty()) return emptyMap()
+        // 分块：输入是单个词的「变形」文本切出来的 token，正常只有几十个，但那个字段
+        // 本身允许到 8000 字符（见 WordImporter.MAX_FIELD_LENGTH），病理输入能凑到
+        // 上千个 token，整条塞进 IN (:list) 就是崩。
+        return lowercaseHeadwords.toList()
+            .chunked(AppDatabase.SQLITE_BIND_LIMIT)
+            .flatMap { db.wordDao().findByLowercaseHeadwords(it) }
+            .associate { it.headword.lowercase() to it.id }
+    }
+
     suspend fun count(): Int = db.wordDao().count()
 
     /** id 为 0 视为新增，否则更新。两种情况都会刷新 updatedAt。 */

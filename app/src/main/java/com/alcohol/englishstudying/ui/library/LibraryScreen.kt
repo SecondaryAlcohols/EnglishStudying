@@ -37,6 +37,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -52,6 +53,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.alcohol.englishstudying.data.local.DeckWithCount
 import com.alcohol.englishstudying.data.local.WordListRow
 import com.alcohol.englishstudying.di.AppContainer
+import com.alcohol.englishstudying.domain.srs.ReviewSchedule
 import com.alcohol.englishstudying.domain.srs.CardState
 import com.alcohol.englishstudying.ui.components.EmptyState
 import com.alcohol.englishstudying.ui.components.StateBadge
@@ -61,6 +63,8 @@ private val STATE_FILTERS = listOf(
     CardState.NEW to "新词",
     CardState.LEARNING to "学习中",
     CardState.REVIEW to "复习中",
+    CardState.TOO_EASY to "太简单",
+    CardState.TOO_HARD to "太难",
     CardState.SUSPENDED to "已挂起"
 )
 
@@ -69,6 +73,7 @@ private val STATE_FILTERS = listOf(
 fun LibraryScreen(
     container: AppContainer,
     onOpenWord: (Long) -> Unit,
+    onAddWord: () -> Unit,
     onOpenImport: () -> Unit,
     onOpenDecks: () -> Unit,
     onOpenStats: () -> Unit,
@@ -94,7 +99,7 @@ fun LibraryScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { onOpenWord(0L) }) {
+            FloatingActionButton(onClick = onAddWord) {
                 Icon(Icons.Filled.Add, contentDescription = "新增词条")
             }
         }
@@ -150,7 +155,18 @@ fun LibraryScreen(
                         ) {
                             items(state.rows, key = { it.word.id }) { row ->
                                 Column {
-                                    WordRow(row = row, onClick = { onOpenWord(row.word.id) })
+                                    WordRow(
+                                        row = row,
+                                        onClick = { onOpenWord(row.word.id) },
+                                        // 太简单/太难名单里的词：行内直接移出恢复学习
+                                        onResume = if (row.state == CardState.TOO_EASY ||
+                                            row.state == CardState.TOO_HARD
+                                        ) {
+                                            { viewModel.resumeExcluded(row.word.id) }
+                                        } else {
+                                            null
+                                        }
+                                    )
                                     HorizontalDivider(
                                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
                                     )
@@ -243,7 +259,11 @@ private fun DeckFilterChip(
 }
 
 @Composable
-private fun WordRow(row: WordListRow, onClick: () -> Unit) {
+private fun WordRow(
+    row: WordListRow,
+    onClick: () -> Unit,
+    onResume: (() -> Unit)? = null
+) {
     ListItem(
         modifier = Modifier.clickable(onClick = onClick),
         headlineContent = {
@@ -267,6 +287,35 @@ private fun WordRow(row: WordListRow, onClick: () -> Unit) {
                 Text(meaning, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         },
-        trailingContent = { StateBadge(row.state) }
+        trailingContent = {
+            // 徽章和倒计时整体是**一个**节点（叠在这一列里）。不能让这个 lambda 直接吐
+            // 两个兄弟节点 —— Material3 的 ListItem 对每个槽位只取 `.firstOrNull()` 来测量
+            // 摆放（material3 ListItem.kt 的 trailingPlaceable），第二个会被静默丢弃：
+            // 没有任何报错，那一行就是不出现
+            Column(horizontalAlignment = Alignment.End) {
+                if (onResume != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        StateBadge(row.state)
+                        Spacer(Modifier.width(6.dp))
+                        TextButton(onClick = onResume) { Text("移出") }
+                    }
+                } else {
+                    StateBadge(row.state)
+                }
+                // 复习倒计时紧贴在状态徽章下面。只给真正参与调度的两种状态显示 ——
+                // 挂起 / 太简单 / 太难的词留着的是被移出之前那一刻的 dueAtMinutes，
+                // 照着它说「N 天后复习」是假话，徽章本身已经说明了它们的处境
+                row.dueAtMinutes
+                    ?.takeIf { row.state == CardState.LEARNING || row.state == CardState.REVIEW }
+                    ?.let { due ->
+                        Text(
+                            ReviewSchedule.label(due),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 2.dp, end = 6.dp)
+                        )
+                    }
+            }
+        }
     )
 }

@@ -4,7 +4,18 @@
     <!--
       不声明任何权限。词库文件通过 Storage Access Framework 读取，
       由用户在选择器里显式授权，因此不需要 READ_EXTERNAL_STORAGE。
+      朗读单词用的系统 TTS 同样不需要权限。
     -->
+
+    <!--
+      Android 11 起应用默认看不到其他应用，要能发现 TTS 引擎就必须在这里声明查询意图。
+      少了这段，TextToSpeech 初始化会拿不到引擎，表现为「喇叭点了没反应」。
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
 
     <application
         android:name=".EnglishStudyingApp"

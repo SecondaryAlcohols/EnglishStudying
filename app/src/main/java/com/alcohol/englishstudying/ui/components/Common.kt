@@ -27,6 +27,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.alcohol.englishstudying.domain.srs.CardState
+import com.alcohol.englishstudying.ui.theme.RatingEasy
+import com.alcohol.englishstudying.ui.theme.RatingHard
 
 /** 空状态。词库为空时每个页面都要给出下一步该干什么，而不是一片空白。 */
 @Composable
@@ -142,6 +144,8 @@ fun StateBadge(state: CardState, modifier: Modifier = Modifier) {
         CardState.LEARNING -> "学习中" to MaterialTheme.colorScheme.tertiary
         CardState.REVIEW -> "复习中" to MaterialTheme.colorScheme.secondary
         CardState.SUSPENDED -> "已挂起" to MaterialTheme.colorScheme.error
+        CardState.TOO_EASY -> "太简单" to RatingEasy
+        CardState.TOO_HARD -> "太难" to RatingHard
     }
     Surface(
         modifier = modifier,
