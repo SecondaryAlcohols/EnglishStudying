@@ -14,8 +14,10 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 data class StudyHomeUiState(
     val loading: Boolean = true,
@@ -25,11 +27,18 @@ data class StudyHomeUiState(
     val totalWords: Int = 0,
     val learnedWords: Int = 0,
     val newDoneToday: Int = 0,
-    val newRecognizedToday: Int = 0,
-    val newGraduatedToday: Int = 0,
+    val startedToday: Int = 0,
+    val masteredToday: Int = 0,
+    /**
+     * 今天重新学习的词数（学过的词今天忘了）。
+     *
+     * 与 [masteredToday] 不同，它**不占** [newLimit] 的额度 —— 额度算的始终是新词，
+     * 重学词只是额外贴上来显示的一项，所以界面上写成 `50+17` 而不是并进那个数字。
+     */
+    val relearnPending: Int = 0,
     val newLimit: Int = 0,
     val reviewDoneToday: Int = 0,
-    /** 处于 LEARNING 状态（学习中/需巩固）的卡数。 */
+    /** 处于学习步内（学习中或重学中）的卡数。 */
     val learningCount: Int = 0,
     /**
      * 待复习表中的复习词总数（直接查待复习表，不限到期时间）。
@@ -80,8 +89,9 @@ private data class HomeCounts(
     val answeredToday: Int,
     val regularDueCount: Int,
     val reviewTableCount: Int,
-    val newRecognizedToday: Int,
-    val newGraduatedToday: Int,
+    val startedToday: Int,
+    val masteredToday: Int,
+    val relearnPending: Int,
     val coolingCount: Int,
     val coolingWaitMinutes: Int,
     val learningCount: Int
@@ -108,6 +118,16 @@ class StudyHomeViewModel(
         }
     }
 
+    init {
+        viewModelScope.launch {
+            // 每天首次进首页时补算一次重学积压快照 —— 快照不是今天写的就刷新，见
+            // StudyRepository.refreshRelearnBacklogIfStale 的说明。
+            studyRepository.refreshRelearnBacklogIfStale(
+                settingsRepository.srsSettings.first().studyDeckId
+            )
+        }
+    }
+
     val state: StateFlow<StudyHomeUiState> = combine(settingsRepository.srsSettings, ticker) { settings, _ -> settings }
         .flatMapLatest { settings ->
             val counts = combine(
@@ -126,8 +146,9 @@ class StudyHomeViewModel(
                     answeredToday = progress.answeredToday,
                     regularDueCount = progress.dueCount,
                     reviewTableCount = reviewTableCount,
-                    newRecognizedToday = progress.newRecognizedToday,
-                    newGraduatedToday = progress.newGraduatedToday,
+                    startedToday = progress.startedToday,
+                    masteredToday = progress.masteredToday,
+                    relearnPending = progress.relearnPending,
                     coolingCount = progress.coolingCount,
                     coolingWaitMinutes = progress.coolingWaitMinutes,
                     learningCount = progress.learningCount
@@ -152,8 +173,9 @@ class StudyHomeViewModel(
                     totalWords = c.total,
                     learnedWords = c.total - c.newRemaining,
                     newDoneToday = c.learnedToday,
-                    newRecognizedToday = c.newRecognizedToday,
-                    newGraduatedToday = c.newGraduatedToday,
+                    startedToday = c.startedToday,
+                    masteredToday = c.masteredToday,
+                    relearnPending = c.relearnPending,
                     newLimit = effectiveLimit,
                     reviewDoneToday = reviewDone,
                     learningCount = c.learningCount,

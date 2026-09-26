@@ -62,6 +62,7 @@ private val STATE_FILTERS = listOf(
     null to "全部",
     CardState.NEW to "新词",
     CardState.LEARNING to "学习中",
+    CardState.RELEARNING to "重学中",
     CardState.REVIEW to "复习中",
     CardState.TOO_EASY to "太简单",
     CardState.TOO_HARD to "太难",
@@ -295,18 +296,24 @@ private fun WordRow(
             Column(horizontalAlignment = Alignment.End) {
                 if (onResume != null) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        StateBadge(row.state)
+                        StateBadge(row.displayState)
                         Spacer(Modifier.width(6.dp))
                         TextButton(onClick = onResume) { Text("移出") }
                     }
                 } else {
-                    StateBadge(row.state)
+                    StateBadge(row.displayState)
                 }
-                // 复习倒计时紧贴在状态徽章下面。只给真正参与调度的两种状态显示 ——
+                // 复习倒计时紧贴在状态徽章下面。只给真正参与调度的几种状态显示 ——
                 // 挂起 / 太简单 / 太难的词留着的是被移出之前那一刻的 dueAtMinutes，
                 // 照着它说「N 天后复习」是假话，徽章本身已经说明了它们的处境
                 row.dueAtMinutes
-                    ?.takeIf { row.state == CardState.LEARNING || row.state == CardState.REVIEW }
+                    ?.takeIf {
+                        // 用 displayState：重学中的词显示的是「还压在重学里」，而不是它的
+                        // state 列（那已经变成 LEARNING 了，但语义上仍是重学）
+                        row.displayState == CardState.LEARNING ||
+                            row.displayState == CardState.RELEARNING ||
+                            row.displayState == CardState.REVIEW
+                    }
                     ?.let { due ->
                         Text(
                             ReviewSchedule.label(due),

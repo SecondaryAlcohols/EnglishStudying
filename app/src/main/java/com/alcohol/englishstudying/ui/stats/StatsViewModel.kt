@@ -55,7 +55,8 @@ class StatsViewModel(
                 // 用 DAO 里「没有 review_states 行」的定义，而不是拿总数去减 ——
                 // 挂起的词也有状态行，减法会把它误算成新词
                 wordRepository.observeNewCount(settings.studyDeckId),
-                reviewDao.observeCountByState(CardState.LEARNING.name),
+                // 含 RELEARNING：分开数会让重学中的词在统计页上哪个数字都不算
+                reviewDao.observeInLearningCount(),
                 reviewDao.observeCountByState(CardState.REVIEW.name),
                 reviewDao.observeCountByState(CardState.SUSPENDED.name)
             ) { total, newCount, learning, review, suspended ->

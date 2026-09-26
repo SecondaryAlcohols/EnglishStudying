@@ -38,7 +38,9 @@ class Sm2Scheduler(settings: SrsSettings) {
         var state = current.state
         var due = current.dueAtMinutes
 
-        val inLearning = state == CardState.NEW || state == CardState.LEARNING
+        val inLearning = state == CardState.NEW ||
+            state == CardState.LEARNING ||
+            state == CardState.RELEARNING
 
         if (inLearning) {
             when (rating) {
@@ -88,7 +90,11 @@ class Sm2Scheduler(settings: SrsSettings) {
                     interval = 0.0
                     step = 0
                     ease -= EASE_PENALTY_AGAIN
-                    state = CardState.LEARNING
+                    // 走 RELEARNING 而不是 LEARNING：这是「学过的词忘了」，不是「新词」。
+                    // 两者调度完全相同（下面 inLearning 分支一视同仁），分开只为统计与
+                    // 词库筛选能区分。注意它只持续到用户下一次作答 —— 那时就走
+                    // inLearning 分支被写成 LEARNING 了，见 CardState.RELEARNING 的说明。
+                    state = CardState.RELEARNING
                     due = nowMinutes + s.learningStepsMinutes[0]
                 }
 
@@ -154,7 +160,7 @@ class Sm2Scheduler(settings: SrsSettings) {
     private fun formatInterval(state: SrsState, nowMinutes: Long): String = when (state.state) {
         CardState.SUSPENDED -> "挂起"
         CardState.TOO_EASY, CardState.TOO_HARD -> "移出学习"
-        CardState.LEARNING, CardState.NEW -> {
+        CardState.LEARNING, CardState.RELEARNING, CardState.NEW -> {
             val minutes = (state.dueAtMinutes - nowMinutes).coerceAtLeast(1L)
             when {
                 minutes < 60 -> "$minutes 分钟"

@@ -1,5 +1,6 @@
 package com.alcohol.englishstudying.ui.study
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -44,6 +45,8 @@ fun StudySummary(
     remainingCount: Int = 0,
     isRetryOnly: Boolean = false,
     onNextGroup: () -> Unit,
+    /** 点某一行跳到那个词的只读详情页。参数是词条 id。 */
+    onOpenWord: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxSize()) {
@@ -92,7 +95,8 @@ fun StudySummary(
             itemsIndexed(items, key = { index, item -> "$index-${item.word.id}" }) { _, item ->
                 SummaryRow(
                     item = item,
-                    onSpeak = { speaker.speak(item.word.headword) }
+                    onSpeak = { speaker.speak(item.word.headword) },
+                    onOpenWord = { onOpenWord(item.word.id) }
                 )
             }
         }
@@ -118,14 +122,19 @@ fun StudySummary(
 }
 
 @Composable
-private fun SummaryRow(item: GroupItem, onSpeak: () -> Unit) {
+private fun SummaryRow(item: GroupItem, onSpeak: () -> Unit, onOpenWord: () -> Unit) {
     val word = item.word
     // 逐条解析出各自的词性；都没有词性时退回 pos 列那一个值
     val parsed = MeaningParser.parseAll(word.meaningList)
     val anyPos = parsed.any { it.pos != null }
     val globalPos = word.partOfSpeech?.takeIf { it.isNotBlank() && !anyPos }
 
-    Column(Modifier.fillMaxWidth()) {
+    // 整行可点：跳到这个词的详情页。行内的喇叭自己消费点击，不会连带跳走
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onOpenWord)
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()

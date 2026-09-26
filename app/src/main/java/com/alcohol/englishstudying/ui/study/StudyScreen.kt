@@ -23,6 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
@@ -99,6 +100,8 @@ fun StudyScreen(
     onOpenLibrary: () -> Unit,
     onOpenImport: () -> Unit,
     onOpenWord: (Long) -> Unit,
+    /** 编辑当前这张卡的词条（改错别字、补词根）。参数是词条 id。 */
+    onEditWord: (Long) -> Unit,
     viewModel: StudyViewModel = viewModel(factory = StudyViewModel.factory(container))
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -107,7 +110,9 @@ fun StudyScreen(
 
     val remainingCount = state.queue.size
     val isRetryOnly = remainingCount > 0 && state.queue.all {
-        it.state.state == CardState.LEARNING || it.state.lastReviewedAt != null
+        it.state.state == CardState.LEARNING ||
+            it.state.state == CardState.RELEARNING ||
+            it.state.lastReviewedAt != null
     }
 
     LaunchedEffect(Unit) {
@@ -124,8 +129,14 @@ fun StudyScreen(
                 },
                 title = { Text(if (state.isPracticeMode) "单纯复习" else "学习") },
                 actions = {
-                    IconButton(onClick = onOpenImport) {
-                        Icon(Icons.Filled.FileUpload, contentDescription = "导入词库")
+                    // 卡片页要改的是「手里这张卡」，所以放编辑入口；导入留给了词库页和学习首页
+                    // （以及下面「词库还是空的」那个空状态）。没有当前卡时置灰而不是隐藏 ——
+                    // 隐藏会让顶栏在「有卡 / 没卡」之间来回跳。
+                    IconButton(
+                        onClick = { card?.let { onEditWord(it.word.id) } },
+                        enabled = card != null
+                    ) {
+                        Icon(Icons.Filled.Edit, contentDescription = "编辑这个词")
                     }
                 }
             )
@@ -158,7 +169,9 @@ fun StudyScreen(
                     hasMore = state.queue.isNotEmpty(),
                     remainingCount = remainingCount,
                     isRetryOnly = isRetryOnly,
-                    onNextGroup = viewModel::nextGroup
+                    onNextGroup = viewModel::nextGroup,
+                    // 点小结里的卡片 → 只读详情页。和卡片上关联词 chip 同一个去处
+                    onOpenWord = onOpenWord
                 )
 
                 state.finished -> Column(Modifier.weight(1f)) {
@@ -595,9 +608,10 @@ private fun StatsStrip(
         maxOf(done, scheduledToday)
     }
 
-    val newRecognized = progress?.newRecognizedToday ?: 0
-    val newGraduated = progress?.newGraduatedToday ?: 0
+    val newRecognized = progress?.startedToday ?: 0
+    val newGraduated = progress?.masteredToday ?: 0
     val newLimit = maxOf(settings.dailyNewLimit, progress?.learnedToday ?: 0, extraNewLimit)
+    val relearned = progress?.relearnPending ?: 0
     val elapsed = formatElapsed(progress?.elapsedTodayMs ?: 0L)
 
     Row(
@@ -608,7 +622,12 @@ private fun StatsStrip(
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
         StatCell("今日复习", "$reviewDone/$reviewTotal")
-        StatCell("初学/掌握/上限", "$newRecognized/$newGraduated/$newLimit")
+        StatCell(
+            "初学/掌握/上限",
+            // 上限只算新词，重学词是额外贴上来的一项 —— 所以是 50+17 而不是 67
+            if (relearned > 0) "$newRecognized/$newGraduated/$newLimit+$relearned"
+            else "$newRecognized/$newGraduated/$newLimit"
+        )
         StatCell("学习时间", elapsed)
     }
 }

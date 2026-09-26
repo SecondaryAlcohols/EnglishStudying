@@ -572,6 +572,14 @@ class StudyViewModel(
         cardShownAt = System.currentTimeMillis()
         refreshPreview()
         observeRelationsForCurrent()
+
+        // 队列刚被清空 = 这次复习结束 → 冻结一次重学积压快照。只有「非空 → 空」这一个
+        // 跃迁会走到（队列空了之后 rate / nextAfterMark 都因为 current == null 提前返回），
+        // 所以一次复习只写一次。空队列时开新一组又会重新填满，下次复习结束再写一次。
+        if (remaining.isEmpty()) {
+            val deckId = _state.value.settings.studyDeckId
+            viewModelScope.launch { studyRepository.snapshotRelearnBacklog(deckId) }
+        }
     }
 
     /** 「下一组」：清掉本组记录，接着刷剩下的。 */
@@ -581,7 +589,11 @@ class StudyViewModel(
 
     /** 只把今天之内还要再考的卡放回队列；排到明天或更晚的交给下一次会话。 */
     private fun shouldRequeueToday(next: SrsState): Boolean {
-        if (next.state != CardState.LEARNING) return false
+        // RELEARNING 也要回队尾 —— 它和 LEARNING 一样是「分钟级到期、今天之内还要再考」。
+        // 漏掉它，一张复习卡被按「忘记」变成 RELEARNING 之后会直接从当前会话里消失：
+        // dueAtMinutes 明明落在今天，这里却判 false，用户在本次会话里再也见不到它，
+        // 只能等下次重建队列。
+        if (next.state != CardState.LEARNING && next.state != CardState.RELEARNING) return false
         val todayEpochDay = LocalDate.now().toEpochDay()
         val endOfToday = (todayEpochDay + 1) * SrsState.MINUTES_PER_DAY
         val nowMinutes = DailyPlanBuilder.nowMinutes(

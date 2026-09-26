@@ -54,8 +54,21 @@ interface WordDao {
                OR IFNULL(w.derivations, '') LIKE '%' || :query || '%')
           AND (:deckId IS NULL
                OR w.id IN (SELECT wordId FROM deck_words WHERE deckId = :deckId))
-          AND (:stateFilter IS NULL
-               OR IFNULL(s.state, 'NEW') = :stateFilter)
+          AND (
+               :stateFilter IS NULL
+               -- 「重学中」筛的是**积压**而不是状态：`RELEARNING` 只在「忘记」到「下次作答」
+               -- 之间短暂存在，一作答就被写成 `LEARNING`，而那时这个词仍然没重学完。
+               -- 拿状态筛它几乎永远筛不出东西（真机上就是 0 条）。
+               OR (
+                   :stateFilter = 'RELEARNING'
+                   AND IFNULL(s.lapses, 0) > 0
+                   AND IFNULL(s.state, '') IN ('LEARNING', 'RELEARNING')
+               )
+               OR (
+                   :stateFilter <> 'RELEARNING'
+                   AND IFNULL(s.state, 'NEW') = :stateFilter
+               )
+          )
         ORDER BY w.headword COLLATE NOCASE ASC
         """
     )

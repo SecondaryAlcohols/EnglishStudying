@@ -18,4 +18,26 @@ data class WordListRow(
     val lapses: Int?
 ) {
     val state: CardState get() = stateName ?: CardState.NEW
+
+    /**
+     * 展示用的状态：**「重学中」按积压算，不看 `state` 列。**
+     *
+     * `RELEARNING` 只在「忘记」到「下次作答」之间短暂存在 —— 一作答就被写成 `LEARNING`，
+     * 而那一刻这个词**仍然没有重学完**。所以光看 `state` 列，正在重学的词会顶着「学习中」
+     * 的徽章，词库按「重学中」筛更是一条都筛不出来（真机上就是这个现象）。
+     *
+     * 判据和 `上限+N` / `需巩固` 用同一个：`lapses > 0`（在复习阶段遗忘过）且仍在学习步内。
+     * 新词在学习步里按「忘记」**不**累加 `lapses`，所以不会被误算成重学。
+     *
+     * 注意「重学中」是「学习中」的子集 —— 按「学习中」筛也会把这些词列出来，这是对的，
+     * 它们确实还在学习步里。
+     */
+    val displayState: CardState
+        get() = if (lapses != null && lapses > 0 &&
+            (state == CardState.LEARNING || state == CardState.RELEARNING)
+        ) {
+            CardState.RELEARNING
+        } else {
+            state
+        }
 }

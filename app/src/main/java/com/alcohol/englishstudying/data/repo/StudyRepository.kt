@@ -5,6 +5,7 @@ import com.alcohol.englishstudying.data.local.AppDatabase
 import com.alcohol.englishstudying.data.local.ReviewLogEntity
 import com.alcohol.englishstudying.data.local.ReviewStateEntity
 import com.alcohol.englishstudying.data.local.WordEntity
+import com.alcohol.englishstudying.data.prefs.SettingsRepository
 import com.alcohol.englishstudying.domain.model.WordRelationType
 import com.alcohol.englishstudying.domain.relations.ChainGrouper
 import com.alcohol.englishstudying.domain.srs.CardState
@@ -19,6 +20,7 @@ import com.alcohol.englishstudying.domain.srs.SrsSettings
 import com.alcohol.englishstudying.domain.srs.SrsState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
@@ -37,8 +39,21 @@ data class DailyProgress(
     val learnedToday: Int = 0,
     val reviewTableCount: Int = 0,
     val todayDueReviewCount: Int = 0,
-    val newRecognizedToday: Int = 0,
-    val newGraduatedToday: Int = 0,
+    /**
+     * 今天「开始学」的词数（初学）：今天新学的 ∪ 今天开始重学的。
+     * 恒有 [masteredToday] <= [startedToday]。
+     */
+    val startedToday: Int = 0,
+    /** 上面那些里今天已经学完的（掌握），含今天重学完的。 */
+    val masteredToday: Int = 0,
+    /**
+     * 还压在重学里的词数，界面上显示成 `上限 50+N`。
+     *
+     * **既不是「今天新产生的」，也不是现算的**：它是上一次复习结束那一刻冻结下来的
+     * 积压值，存在 DataStore 里，所以能跨天稳定地摆着，直到下次复习结束才更新。
+     * 它**不占新词额度** —— `dailyNewLimit` 算的始终是新词，这是贴在旁边额外显示的一项。
+     */
+    val relearnPending: Int = 0,
     val coolingCount: Int = 0,
     val earliestCoolingDueMinutes: Long? = null,
     val currentNowMinutes: Long = 0L,
@@ -62,6 +77,14 @@ data class PracticeSessionResult(
 
 class StudyRepository(
     private val db: AppDatabase,
+    /**
+     * 只为了那个重学积压快照 —— 它存在 DataStore 里而不是 Room 里（见
+     * [SettingsRepository.relearnBacklog] 的说明：不值得为显示一个数动 schema 迁移）。
+     *
+     * 名字**不能叫 `settings`**：这个类好几个方法都有 `settings: SrsSettings` 参数，
+     * 那个参数会把构造属性遮蔽掉，`settings.relearnBacklog` 就编译不过了。
+     */
+    private val settingsStore: SettingsRepository,
     private val now: () -> Long = System::currentTimeMillis,
     private val today: () -> LocalDate = { LocalDate.now() },
     private val currentTime: () -> LocalTime = { LocalTime.now() }
@@ -349,18 +372,66 @@ class StudyRepository(
     }
 
     /**
-     * 把移出学习的词拉回来（太简单 / 太难名单 → 恢复学习）。
+     * 把移出学习的词拉回来（太简单 / 太难名单 → 恢复学习）。分三种情况：
      *
-     * 真学过的（有复习次数或间隔）回到 REVIEW 接着原进度；从没毕业过的
-     * （比如新词当天就标了太简单）直接删行回到新词，从零开始。
+     *  1. **一次都没作答过**（比如新词当天就标了太简单）→ 删行回到新词，从零开始；
+     *  2. **学过、但被遗忘了** → 回到 [CardState.RELEARNING] 重学；
+     *  3. **还有间隔在** → 回 `REVIEW` 接着原进度。
+     *
+     * 第 2 条是这里最容易写错的地方。遗忘会把 `repetitions` 和 `intervalDays` 一起清零
+     * （见 [Sm2Scheduler] 的 AGAIN 分支），而这两个数曾经正是「有没有学过」的判据 ——
+     * 于是一个学了很久的词走「遗忘 → 标太难 → 恢复」这一圈之后会被当成全新词把状态行删掉，
+     * 历史 ease / lapses 全丢，还要重新占一次新词额度。所以判据换成**有没有作答日志**，
+     * 分支逻辑单独抽成 [resumeActionFor]（纯函数，好单测）。
      */
     suspend fun resumeExcluded(wordId: Long) {
         val row = db.reviewDao().get(wordId) ?: return
         if (row.state != CardState.TOO_EASY && row.state != CardState.TOO_HARD) return
-        if (row.repetitions == 0 && row.intervalDays <= 0.0) {
-            db.reviewDao().resetWord(wordId)
-        } else {
-            db.reviewDao().unsuspend(wordId)
+
+        val hasLogs = db.reviewDao().hasLogs(wordId)
+        when (resumeActionFor(hasLogs, row.repetitions, row.intervalDays)) {
+            ResumeAction.RESET_TO_NEW -> db.reviewDao().resetWord(wordId)
+
+            ResumeAction.RELEARN -> db.reviewDao().upsert(
+                row.copy(
+                    state = CardState.RELEARNING,
+                    learningStep = 0,
+                    // 立即可学：恢复是用户的显式动作，不该再让他等一个学习步。
+                    // 也正因为不套学习步偏移，这里不需要 SrsSettings 参数。
+                    dueAtMinutes = nowMinutes(today().toEpochDay())
+                )
+            )
+
+            ResumeAction.RESUME_REVIEW -> db.reviewDao().unsuspend(wordId)
+        }
+    }
+
+    /**
+     * 冻结一次重学积压快照 —— 在**复习结束时**调用一次。
+     *
+     * 取的是那一刻还压在重学里的词数，存进 DataStore 后界面就一直读它。所以这个数不会因为
+     * 你随后重学完几个词而往下掉，也不会在半夜归零；它只在下次复习结束时更新。
+     *
+     * 按 [deckId] 过滤，是为了让它和旁边的初学 / 掌握 / 上限处在同一个学习范围。代价是
+     * 中途换学习词表的话，这个冻结值会停留在旧范围上，直到下次复习结束。
+     */
+    suspend fun snapshotRelearnBacklog(deckId: Long?) {
+        settingsStore.setRelearnBacklog(
+            count = db.reviewDao().countPendingRelearn(deckId),
+            epochDay = today().toEpochDay()
+        )
+    }
+
+    /**
+     * 快照不是今天写的（或压根没写过）就补算一次。每天首次进首页时调一次。
+     *
+     * 补这一步是因为「只在复习结束刷新」有个缺口：某天没把队列走完，那个数就会一直停在
+     * 旧值，跨天也不动 —— 而它旁边的初学 / 掌握每天零点就归零了，两排数字会互相矛盾。
+     * 每天首次进来刷一次之后，当天之内仍然只在复习结束时更新，冻结语义不变。
+     */
+    suspend fun refreshRelearnBacklogIfStale(deckId: Long?) {
+        if (settingsStore.relearnBacklogDay.first() != today().toEpochDay()) {
+            snapshotRelearnBacklog(deckId)
         }
     }
 
@@ -407,12 +478,15 @@ class StudyRepository(
 
         val intermediate2 = combine(
             intermediate,
-            db.reviewDao().observeNewWordsRecognizedCount(startMillis, endMillis, deckId),
-            db.reviewDao().observeNewWordsGraduatedCount(startMillis, endMillis, deckId)
-        ) { p, recognized, graduated ->
+            db.reviewDao().observeStartedTodayCount(startMillis, endMillis, deckId),
+            db.reviewDao().observeMasteredTodayCount(startMillis, endMillis, deckId),
+            // 积压值不走 Room 查询：它是一份冻结的快照，读的是 DataStore 里存下的那次结果
+            settingsStore.relearnBacklog
+        ) { p, started, mastered, relearnPending ->
             p.copy(
-                newRecognizedToday = recognized,
-                newGraduatedToday = graduated
+                startedToday = started,
+                masteredToday = mastered,
+                relearnPending = relearnPending
             )
         }
 
@@ -501,4 +575,35 @@ class StudyRepository(
     private companion object {
         const val MILLIS_PER_DAY = 86_400_000L
     }
+}
+
+/** 从「移出学习」名单恢复一个词时该做什么。 */
+internal enum class ResumeAction {
+    /** 一次都没作答过 —— 删掉状态行，当新词重新开始。 */
+    RESET_TO_NEW,
+
+    /** 学过、但被遗忘了 —— 回到 `RELEARNING` 重学，保留 ease / lapses 历史。 */
+    RELEARN,
+
+    /** 还有间隔在 —— 回 `REVIEW` 接着原进度。 */
+    RESUME_REVIEW
+}
+
+/**
+ * 从「移出学习」名单恢复时走哪条路。
+ *
+ * 判据是**有没有作答日志**，刻意不用 `repetitions` / `intervalDays` —— 遗忘会把这两个数
+ * 一起清零（见 [Sm2Scheduler] 的 AGAIN 分支），拿它们当「有没有学过」的判据，就会把学过
+ * 很久的词当成新词把状态行删掉，历史 ease / lapses 全丢，还要重新占一次新词额度。
+ *
+ * 抽成纯函数是因为这个判据判错的后果是**静默的数据丢失**，肉眼看不出来，必须能单测。
+ */
+internal fun resumeActionFor(
+    hasLogs: Boolean,
+    repetitions: Int,
+    intervalDays: Double
+): ResumeAction = when {
+    !hasLogs -> ResumeAction.RESET_TO_NEW
+    repetitions == 0 && intervalDays <= 0.0 -> ResumeAction.RELEARN
+    else -> ResumeAction.RESUME_REVIEW
 }

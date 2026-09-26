@@ -118,14 +118,56 @@ class Sm2SchedulerTest {
     }
 
     @Test
-    fun `复习中按忘记，回到学习步并累计遗忘次数`() {
+    fun `复习中按忘记，进入重学并累计遗忘次数`() {
         val next = rate(reviewCard(interval = 10.0, ease = 2.5, lapses = 2), Rating.AGAIN)
 
-        assertEquals(CardState.LEARNING, next.state)
+        // 走 RELEARNING 而不是 LEARNING —— 这是「学过的词忘了」，不是新词。
+        // 下面这几个数值与改动前逐字相同：换的只是状态名，算法没动。
+        assertEquals(CardState.RELEARNING, next.state)
         assertEquals(3, next.lapses)
         assertEquals(0, next.repetitions)
         assertEquals(2.3, next.easeFactor, 0.001)
         assertEquals(nowMinutes + 1, next.dueAtMinutes)
+    }
+
+    /**
+     * RELEARNING 是个**会被消耗掉**的状态：一作答进入学习步就写成 LEARNING。
+     *
+     * 这条行为正是「重学词数不能数 `COUNT(state = 'RELEARNING')`」的根据 —— 那样数出来
+     * 的值会随着用户把卡学走而衰减，最后掉到 0。所以必须钉住它。
+     */
+    @Test
+    fun `重学卡一作答就离开 RELEARNING 状态`() {
+        val relearning = rate(reviewCard(interval = 10.0), Rating.AGAIN)
+        assertEquals(CardState.RELEARNING, relearning.state)
+
+        // 只前进一步（默认学习步 [1, 10]），状态已经被消耗成 LEARNING
+        val afterGood = rate(relearning, Rating.GOOD)
+        assertEquals(CardState.LEARNING, afterGood.state)
+        assertEquals(1, afterGood.learningStep)
+        assertEquals(nowMinutes + 10, afterGood.dueAtMinutes)
+    }
+
+    /** 重学卡走完学习步要毕业回 REVIEW，和普通学习卡一样。 */
+    @Test
+    fun `重学卡走完学习步毕业回复习`() {
+        val relearning = rate(reviewCard(interval = 10.0), Rating.AGAIN)
+        val graduated = rate(rate(relearning, Rating.GOOD), Rating.GOOD)
+
+        assertEquals(CardState.REVIEW, graduated.state)
+        assertEquals(1.0, graduated.intervalDays, 0.001)
+    }
+
+    /** 重学途中再按忘记：回学习步第一步，而不是又变回一张新卡。 */
+    @Test
+    fun `重学中按忘记回到第一步`() {
+        val relearning = rate(reviewCard(interval = 10.0), Rating.AGAIN)
+        val stepped = rate(relearning, Rating.GOOD)
+        val back = rate(stepped, Rating.AGAIN)
+
+        assertEquals(CardState.LEARNING, back.state)
+        assertEquals(0, back.learningStep)
+        assertEquals(nowMinutes + 1, back.dueAtMinutes)
     }
 
     // ---- 边界与钳制 ----

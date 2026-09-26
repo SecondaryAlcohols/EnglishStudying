@@ -142,6 +142,9 @@ fun StateBadge(state: CardState, modifier: Modifier = Modifier) {
     val (label, color) = when (state) {
         CardState.NEW -> "新词" to MaterialTheme.colorScheme.primary
         CardState.LEARNING -> "学习中" to MaterialTheme.colorScheme.tertiary
+        // 用 error 色而不是与 LEARNING 共用 tertiary：这个徽章存在的意义就是让人一眼
+        // 分辨「新词在学习步」和「学过的词忘了在重学」，同色就白分了。
+        CardState.RELEARNING -> "重学中" to MaterialTheme.colorScheme.error
         CardState.REVIEW -> "复习中" to MaterialTheme.colorScheme.secondary
         CardState.SUSPENDED -> "已挂起" to MaterialTheme.colorScheme.error
         CardState.TOO_EASY -> "太简单" to RatingEasy

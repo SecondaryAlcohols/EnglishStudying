@@ -190,8 +190,10 @@ fun AppNavHost(
                     // 再点学习页签回不去」这种两套导航语义不一致的问题
                     onOpenLibrary = { navController.switchTopLevel(Routes.LIBRARY) },
                     onOpenImport = { navController.navigate(Routes.IMPORT) },
-                    // 点卡片上的关联词进只读详情页，看完返回回到同一张卡
-                    onOpenWord = { id -> navController.navigate(Routes.wordDetail(id)) }
+                    // 点卡片上的关联词 / 点小结里的卡片，都进只读详情页，看完返回回到同一张卡
+                    onOpenWord = { id -> navController.navigate(Routes.wordDetail(id)) },
+                    // 顶栏那支笔：编辑当前这张卡对应的词条
+                    onEditWord = { id -> navController.navigate(Routes.wordEdit(id)) }
                 )
             }
 

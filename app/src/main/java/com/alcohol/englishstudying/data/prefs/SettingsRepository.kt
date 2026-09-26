@@ -81,6 +81,31 @@ class SettingsRepository(private val context: Context) {
         prefs[Keys.GROUP_RELATED] ?: true
     }
 
+    /**
+     * 「上一次复习结束时还压在重学里的词数」——冻下来的快照，界面上显示成 `上限 50+N`。
+     *
+     * 刻意**不是**从 `review_states` 现算的。现算的值会在你把一个词重学完的那一瞬间
+     * 就变小，而这个数要能稳定地跨天摆在那里（今天忘掉的词，明天还没重学完就仍然算数），
+     * 直到下一次复习结束才更新。所以它必须是一份存下来的值。
+     *
+     * 放 DataStore 而不是 Room：它是个纯展示用的派生量，为此加一张表要动 schema 版本和
+     * 迁移 —— 而迁移是这个应用里唯一能让用户**升级即崩或清库**的地方，不值得为显示一个数
+     * 去冒那个险。（也正因为不在 Room 里，它没有 schema 校验能保证它和表结构同步。）
+     */
+    val relearnBacklog: Flow<Int> = context.dataStore.data.map { prefs ->
+        prefs[Keys.RELEARN_BACKLOG] ?: 0
+    }
+
+    /**
+     * 快照是哪天写下的；**从没写过时是 null**。
+     *
+     * 用来区分「压根没算过」（装完新版本、还没走完一次复习 → 应该补算一次，否则界面
+     * 会显示 `50+0`，而实际积压可能有 7 个）和「算出来就是 0」（真的没有重学任务）。
+     */
+    val relearnBacklogDay: Flow<Long?> = context.dataStore.data.map { prefs ->
+        prefs[Keys.RELEARN_BACKLOG_DAY]
+    }
+
     suspend fun setDailyNewLimit(value: Int) = putInt(Keys.DAILY_NEW_LIMIT, value)
     suspend fun setDailyReviewLimit(value: Int) = putInt(Keys.DAILY_REVIEW_LIMIT, value)
     suspend fun setNewWordOrder(value: NewWordOrder) = putString(Keys.NEW_WORD_ORDER, value.name)
@@ -118,6 +143,19 @@ class SettingsRepository(private val context: Context) {
     suspend fun setHideHintsUntilRevealed(value: Boolean) = putBoolean(Keys.HIDE_HINTS, value)
 
     suspend fun setGroupRelatedWords(value: Boolean) = putBoolean(Keys.GROUP_RELATED, value)
+
+    /**
+     * 写一次重学积压快照（复习结束时调用）。
+     *
+     * 顺带记下这是第几个 epoch day，只为了排查「这个数怎么一直没变」时能分清
+     * 「今天确实没有重学任务」和「快照压根没被写过」。
+     */
+    suspend fun setRelearnBacklog(count: Int, epochDay: Long) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.RELEARN_BACKLOG] = count
+            prefs[Keys.RELEARN_BACKLOG_DAY] = epochDay
+        }
+    }
 
     /** 只重置算法参数，不动词库与学习进度。 */
     suspend fun resetSrsSettings() {
@@ -159,6 +197,14 @@ class SettingsRepository(private val context: Context) {
         val CARD_FIELDS = stringPreferencesKey("card_fields")
         val HIDE_HINTS = booleanPreferencesKey("hide_hints")
         val GROUP_RELATED = booleanPreferencesKey("group_related_words")
+
+        /**
+         * 重学积压快照。**刻意不放进 [srsKeys]** —— 它不是算法参数，而
+         * `resetSrsSettings()` 会清掉 `srsKeys` 里的每一项，放进去就等于
+         * 「重置算法参数」这个动作会顺手把界面上的数字抹成 0。
+         */
+        val RELEARN_BACKLOG = intPreferencesKey("relearn_backlog")
+        val RELEARN_BACKLOG_DAY = longPreferencesKey("relearn_backlog_day")
 
         val srsKeys = listOf(
             DAILY_NEW_LIMIT, DAILY_REVIEW_LIMIT, NEW_WORD_ORDER, LEARNING_STEPS,

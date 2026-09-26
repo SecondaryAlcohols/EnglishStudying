@@ -225,7 +225,10 @@ fun WordDetailScreen(
 @Composable
 private fun ScheduleBadge(reviewState: ReviewStateEntity?, onSetDays: () -> Unit) {
     val row = reviewState ?: return
-    if (row.state != CardState.LEARNING && row.state != CardState.REVIEW) return
+    if (row.state != CardState.LEARNING &&
+        row.state != CardState.RELEARNING &&
+        row.state != CardState.REVIEW
+    ) return
 
     Row(
         modifier = Modifier

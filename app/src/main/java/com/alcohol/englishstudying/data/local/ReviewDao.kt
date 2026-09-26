@@ -37,7 +37,8 @@ interface ReviewDao {
     suspend fun dueReviewStates(nowMinutes: Long, deckId: Long?, limit: Int): List<ReviewStateEntity>
 
     /**
-     * 到期的「学习步内」卡。白名单同 [dueReviewStates]，将来加排除态也不用改这里。
+     * 到期的「学习步内」卡，含正在重学的（`RELEARNING`）。白名单式过滤，
+     * 将来加排除态也不用改这里。
      *
      * 学习卡是「在途」卡 —— 用户今天在卡片上作过答、还在分钟级重考循环里，
      * 丢掉它们没有补救路径，所以给一份独立于复习卡的预算。
@@ -46,7 +47,7 @@ interface ReviewDao {
         """
         SELECT * FROM review_states
         WHERE dueAtMinutes <= :nowMinutes
-          AND state = 'LEARNING'
+          AND state IN ('LEARNING', 'RELEARNING')
           AND (:deckId IS NULL OR wordId IN (SELECT wordId FROM deck_words WHERE deckId = :deckId))
         ORDER BY dueAtMinutes ASC
         LIMIT :limit
@@ -60,7 +61,7 @@ interface ReviewDao {
     @Query(
         """
         SELECT * FROM review_states
-        WHERE state = 'LEARNING'
+        WHERE state IN ('LEARNING', 'RELEARNING')
           AND (:deckId IS NULL OR wordId IN (SELECT wordId FROM deck_words WHERE deckId = :deckId))
         ORDER BY dueAtMinutes ASC
         LIMIT :limit
@@ -72,7 +73,7 @@ interface ReviewDao {
         """
         SELECT * FROM review_states
         WHERE dueAtMinutes <= :nowMinutes
-          AND state IN ('LEARNING', 'REVIEW')
+          AND state IN ('LEARNING', 'RELEARNING', 'REVIEW')
           AND (:deckId IS NULL OR wordId IN (SELECT wordId FROM deck_words WHERE deckId = :deckId))
         ORDER BY dueAtMinutes ASC
         """
@@ -80,12 +81,13 @@ interface ReviewDao {
     suspend fun allDueStates(nowMinutes: Long, deckId: Long?): List<ReviewStateEntity>
 
     /**
-     * 待复习表中的所有复习卡（直接查 review_states 表，包含 LEARNING 与 REVIEW 状态，不以到期时间为门槛）。
+     * 待复习表中的所有复习卡（直接查 review_states 表，包含 LEARNING / RELEARNING / REVIEW
+     * 状态，不以到期时间为门槛）。
      */
     @Query(
         """
         SELECT * FROM review_states
-        WHERE state IN ('LEARNING', 'REVIEW')
+        WHERE state IN ('LEARNING', 'RELEARNING', 'REVIEW')
           AND (:deckId IS NULL OR wordId IN (SELECT wordId FROM deck_words WHERE deckId = :deckId))
         ORDER BY dueAtMinutes ASC
         """
@@ -96,19 +98,19 @@ interface ReviewDao {
         """
         SELECT COUNT(*) FROM review_states
         WHERE dueAtMinutes <= :nowMinutes
-          AND state IN ('LEARNING', 'REVIEW')
+          AND state IN ('LEARNING', 'RELEARNING', 'REVIEW')
           AND (:deckId IS NULL OR wordId IN (SELECT wordId FROM deck_words WHERE deckId = :deckId))
         """
     )
     fun observeDueCount(nowMinutes: Long, deckId: Long?): Flow<Int>
 
     /**
-     * 正在冷却中的学习卡数（state = 'LEARNING' 且 dueAtMinutes > :nowMinutes）。
+     * 正在冷却中的学习卡数（`LEARNING` / `RELEARNING`，且 dueAtMinutes > :nowMinutes）。
      */
     @Query(
         """
         SELECT COUNT(*) FROM review_states
-        WHERE state = 'LEARNING'
+        WHERE state IN ('LEARNING', 'RELEARNING')
           AND dueAtMinutes > :nowMinutes
           AND (:deckId IS NULL OR wordId IN (SELECT wordId FROM deck_words WHERE deckId = :deckId))
         """
@@ -121,7 +123,7 @@ interface ReviewDao {
     @Query(
         """
         SELECT MIN(dueAtMinutes) FROM review_states
-        WHERE state = 'LEARNING'
+        WHERE state IN ('LEARNING', 'RELEARNING')
           AND dueAtMinutes > :nowMinutes
           AND (:deckId IS NULL OR wordId IN (SELECT wordId FROM deck_words WHERE deckId = :deckId))
         """
@@ -134,19 +136,19 @@ interface ReviewDao {
     @Query(
         """
         SELECT COUNT(*) FROM review_states
-        WHERE state IN ('LEARNING', 'REVIEW')
+        WHERE state IN ('LEARNING', 'RELEARNING', 'REVIEW')
           AND (:deckId IS NULL OR wordId IN (SELECT wordId FROM deck_words WHERE deckId = :deckId))
         """
     )
     fun observeReviewCount(deckId: Long?): Flow<Int>
 
     /**
-     * 处于 LEARNING 状态（学习中/需巩固）的卡片总数。
+     * 处于学习步内（`LEARNING` / `RELEARNING`，即学习中或重学中）的卡片总数。
      */
     @Query(
         """
         SELECT COUNT(*) FROM review_states
-        WHERE state = 'LEARNING'
+        WHERE state IN ('LEARNING', 'RELEARNING')
           AND (:deckId IS NULL OR wordId IN (SELECT wordId FROM deck_words WHERE deckId = :deckId))
         """
     )
@@ -154,6 +156,15 @@ interface ReviewDao {
 
     @Query("SELECT COUNT(*) FROM review_states WHERE state = :state")
     fun observeCountByState(state: String): Flow<Int>
+
+    /**
+     * 学习步内的卡数（`LEARNING` + `RELEARNING`）。
+     *
+     * 统计页把这两类合起来叫「学习中」。分开数的话，重学中的词在统计页上**哪个数字都不算**
+     * —— 看着像凭空少了几张卡，而它们其实就在队列里。
+     */
+    @Query("SELECT COUNT(*) FROM review_states WHERE state IN ('LEARNING', 'RELEARNING')")
+    fun observeInLearningCount(): Flow<Int>
 
     /** 今天已作答的卡片数（同一词当天多次作答只算一次）。 */
     @Query(
@@ -183,7 +194,7 @@ interface ReviewDao {
             UNION
             SELECT r.wordId FROM review_states r
             WHERE r.dueAtMinutes < :endOfDayMinutes
-              AND r.state IN ('LEARNING', 'REVIEW')
+              AND r.state IN ('LEARNING', 'RELEARNING', 'REVIEW')
               AND (:deckId IS NULL OR r.wordId IN (SELECT wordId FROM deck_words WHERE deckId = :deckId))
               AND r.wordId NOT IN (
                   SELECT wordId FROM review_logs
@@ -202,11 +213,21 @@ interface ReviewDao {
     ): Flow<Int>
 
     /**
-     * 今天新学且在第 0 步点击「认识」/「太简单」的词数（初学）。
+     * 今天「开始学」的词数（初学）。两部分合起来：
+     *
+     *  1. **今天新学的词**：首次作答在今天，且在第 0 步答对（GOOD/EASY）、或被标记为
+     *     「太简单」移出学习（移出不写日志，所以那一支只能从状态行看）；
+     *  2. **今天开始重学的词**：今天答了「忘记」、但首次作答**不**在今天 —— 也就是学过
+     *     的词今天忘了。`NOT IN (首次作答在今天)` 与第 1 部分的判据正好对称：新词在学习
+     *     步里按「忘记」算初学，不算重学。
+     *
+     * 两部分都是**日志锚定**的（「今天有没有落下这一行」），而不是「现在处于什么状态」。
+     * 状态会随着用户把卡学走而变化，按状态数出来的值当天就会往下掉 —— 那正是这个界面
+     * 一开始要修的问题。
      */
     @Query(
         """
-        SELECT COUNT(DISTINCT r_words.wordId) FROM (
+        SELECT COUNT(DISTINCT w.wordId) FROM (
             SELECT l.wordId FROM review_logs l
             WHERE l.reviewedAt >= :startMillis AND l.reviewedAt < :endMillis
               AND l.rating IN ('GOOD', 'EASY')
@@ -225,35 +246,88 @@ interface ReviewDao {
                   GROUP BY wordId
                   HAVING MIN(reviewedAt) >= :startMillis AND MIN(reviewedAt) < :endMillis
               )
-        ) r_words
+            UNION
+            SELECT l.wordId FROM review_logs l
+            WHERE l.reviewedAt >= :startMillis AND l.reviewedAt < :endMillis
+              AND l.rating = 'AGAIN'
+              AND (:deckId IS NULL OR l.wordId IN (SELECT wordId FROM deck_words WHERE deckId = :deckId))
+              AND l.wordId NOT IN (
+                  SELECT wordId FROM review_logs
+                  GROUP BY wordId
+                  HAVING MIN(reviewedAt) >= :startMillis AND MIN(reviewedAt) < :endMillis
+              )
+        ) w
         """
     )
-    fun observeNewWordsRecognizedCount(
-        startMillis: Long,
-        endMillis: Long,
-        deckId: Long?
-    ): Flow<Int>
+    fun observeStartedTodayCount(startMillis: Long, endMillis: Long, deckId: Long?): Flow<Int>
 
     /**
-     * 今天新学且走完全部学习步、离开学习步正式进入复习阶段（或标记为太简单移出学习）的词数（掌握）。
+     * 上面那些「今天开始学的词」里，**今天已经学完**的词数（掌握）。
+     *
+     *  1. 今天新学的词里已经走到 `REVIEW`/`TOO_EASY` 的；
+     *  2. 今天忘了的已学过的词里，现在已经回到 `REVIEW`/`TOO_EASY` 的（今天忘、今天又学回来）。
+     *
+     * 于是恒有 `掌握 <= 初学` —— 这个关系就是它的定义。
      */
     @Query(
         """
-        SELECT COUNT(*) FROM review_states r
-        WHERE r.state IN ('REVIEW', 'TOO_EASY')
-          AND (:deckId IS NULL OR r.wordId IN (SELECT wordId FROM deck_words WHERE deckId = :deckId))
-          AND r.wordId IN (
-              SELECT wordId FROM review_logs
-              GROUP BY wordId
-              HAVING MIN(reviewedAt) >= :startMillis AND MIN(reviewedAt) < :endMillis
-          )
+        SELECT COUNT(*) FROM (
+            SELECT r.wordId FROM review_states r
+            WHERE r.state IN ('REVIEW', 'TOO_EASY')
+              AND (:deckId IS NULL OR r.wordId IN (SELECT wordId FROM deck_words WHERE deckId = :deckId))
+              AND r.wordId IN (
+                  SELECT wordId FROM review_logs
+                  GROUP BY wordId
+                  HAVING MIN(reviewedAt) >= :startMillis AND MIN(reviewedAt) < :endMillis
+              )
+            UNION
+            SELECT r.wordId FROM review_states r
+            WHERE r.state IN ('REVIEW', 'TOO_EASY')
+              AND (:deckId IS NULL OR r.wordId IN (SELECT wordId FROM deck_words WHERE deckId = :deckId))
+              AND r.wordId IN (
+                  SELECT wordId FROM review_logs
+                  WHERE reviewedAt >= :startMillis AND reviewedAt < :endMillis
+                    AND rating = 'AGAIN'
+              )
+        ) w
         """
     )
-    fun observeNewWordsGraduatedCount(
-        startMillis: Long,
-        endMillis: Long,
-        deckId: Long?
-    ): Flow<Int>
+    fun observeMasteredTodayCount(startMillis: Long, endMillis: Long, deckId: Long?): Flow<Int>
+
+    /**
+     * 还压在重学里的词数：**遗忘过（`lapses > 0`）且仍在学习步内**。
+     *
+     * 这是「重学积压」的真实值。复习结束时由 `StudyRepository.snapshotRelearnBacklog` 取
+     * 一次存进 DataStore，界面上显示成 `上限 50+N` —— 取一次是因为这个值会在用户重学完一个
+     * 词的瞬间变小，而界面上那个数要能稳定地跨天摆着，直到下次复习结束才更新。
+     *
+     * 用 `lapses > 0` 而不是「有过 AGAIN 日志」：新词在学习步里按「忘记」**不**累加
+     * `lapses`（见 `Sm2Scheduler` 的 inLearning 分支），所以这个判据天然排除掉了新词。
+     * 也不能用「lapses > 0」单独当判据 —— 那样会把「上个月忘过、今天只是正常复习」的
+     * 词也算进来。
+     *
+     * 用 `state IN ('LEARNING','RELEARNING')` 而不是只认 `RELEARNING`：重学卡一作答就被
+     * 写成 `LEARNING`，只认 `RELEARNING` 会让这个数在用户学了一半的时候凭空掉下去。
+     */
+    @Query(
+        """
+        SELECT COUNT(*) FROM review_states
+        WHERE lapses > 0
+          AND state IN ('LEARNING', 'RELEARNING')
+          AND (:deckId IS NULL OR wordId IN (SELECT wordId FROM deck_words WHERE deckId = :deckId))
+        """
+    )
+    suspend fun countPendingRelearn(deckId: Long?): Int
+
+    /**
+     * 这个词有没有被作答过。
+     *
+     * 用来区分「真的一次都没学过」和「学过、只是被遗忘了」—— 两者的
+     * `repetitions` / `intervalDays` 都是 0，光看状态行分不开。见
+     * `StudyRepository.resumeExcluded`。
+     */
+    @Query("SELECT EXISTS(SELECT 1 FROM review_logs WHERE wordId = :wordId)")
+    suspend fun hasLogs(wordId: Long): Boolean
 
     @Query(
         """

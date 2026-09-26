@@ -25,7 +25,7 @@ class AppContainer(context: Context) {
     val settings: SettingsRepository by lazy { SettingsRepository(appContext) }
     val words: WordRepository by lazy { WordRepository(database) }
     val decks: DeckRepository by lazy { DeckRepository(database) }
-    val study: StudyRepository by lazy { StudyRepository(database) }
+    val study: StudyRepository by lazy { StudyRepository(database, settings) }
     val relations: RelationRepository by lazy { RelationRepository(database) }
     val importer: WordImporter by lazy { WordImporter(database) }
     val fileReader: WordFileReader by lazy { WordFileReader(appContext) }

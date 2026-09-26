@@ -203,11 +203,13 @@ private fun TodayCounts(state: StudyHomeUiState) {
         CountRow3(
             label = "今日新词",
             firstHint = "初学",
-            first = state.newRecognizedToday,
+            first = state.startedToday,
             secondHint = "掌握",
-            second = state.newGraduatedToday,
+            second = state.masteredToday,
             thirdHint = "上限",
-            third = state.newLimit
+            third = state.newLimit,
+            // 上限只算新词（dailyNewLimit），重学词不占额度 —— 所以是 `50+17` 不是 `67`
+            thirdPlus = state.relearnPending
         )
         CountRow3(
             label = "复习词",
@@ -229,7 +231,9 @@ private fun CountRow3(
     secondHint: String,
     second: Int,
     thirdHint: String,
-    third: Int
+    third: Int,
+    /** 第三格后面额外跟的「+N」，见 [CountPhrase] 的说明。 */
+    thirdPlus: Int? = null
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
@@ -252,7 +256,7 @@ private fun CountRow3(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 6.dp)
         )
-        CountPhrase(thirdHint, third)
+        CountPhrase(thirdHint, third, thirdPlus)
     }
 }
 
@@ -284,7 +288,7 @@ private fun CountRow(
 
 /** 「上限 20」这样的短语：说明文字压暗，数字加粗，凑近了读也不会串行。 */
 @Composable
-private fun CountPhrase(hint: String, value: Int) {
+private fun CountPhrase(hint: String, value: Int, plus: Int? = null) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             hint,
@@ -297,6 +301,16 @@ private fun CountPhrase(hint: String, value: Int) {
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold
         )
+        // 「上限 50+17」里的那个 +17：今天要重学的词数。它**不占**新词额度（额度仍是前面
+        // 那个数字），所以不能并进去，必须让两者看得见地分开。为 0 时不画，免得多个 +0。
+        if (plus != null && plus > 0) {
+            Text(
+                "+$plus",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
     }
 }
 
