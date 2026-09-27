@@ -446,7 +446,13 @@ class StudyViewModel(
                 return@actOnce
             }
 
+            // 复习卡上按「忘记」= 这个词掉进重学：界面上的 +N 当场 +1。
+            // 判据必须和 Sm2Scheduler 里「lapses 何时 +1」一致（只有复习阶段的忘记才 +1），
+            // 否则会话中涨的数会和复习结束时落回的值对不上。
+            val lapsed = rating == Rating.AGAIN && card.state.state == CardState.REVIEW
+
             val next = studyRepository.submit(card, rating, elapsed, _state.value.settings)
+            if (lapsed) studyRepository.recordForgottenWord()
             advance(card, next, rating)
         }
     }
@@ -578,6 +584,8 @@ class StudyViewModel(
         // 所以一次复习只写一次。空队列时开新一组又会重新填满，下次复习结束再写一次。
         if (remaining.isEmpty()) {
             val deckId = _state.value.settings.studyDeckId
+            // 写快照时会把会话内的遗忘计数一并归零（同一个 DataStore edit，原子），
+            // 所以这里不用再动 UI 状态
             viewModelScope.launch { studyRepository.snapshotRelearnBacklog(deckId) }
         }
     }

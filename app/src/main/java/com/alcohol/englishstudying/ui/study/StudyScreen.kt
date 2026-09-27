@@ -611,6 +611,7 @@ private fun StatsStrip(
     val newRecognized = progress?.startedToday ?: 0
     val newGraduated = progress?.masteredToday ?: 0
     val newLimit = maxOf(settings.dailyNewLimit, progress?.learnedToday ?: 0, extraNewLimit)
+    // relearnPending 里已经含了「复习中每忘一个 +1」的那一段，见 StudyRepository.relearnPending
     val relearned = progress?.relearnPending ?: 0
     val elapsed = formatElapsed(progress?.elapsedTodayMs ?: 0L)
 

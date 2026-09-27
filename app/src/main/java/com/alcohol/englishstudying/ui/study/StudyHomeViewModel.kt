@@ -120,9 +120,9 @@ class StudyHomeViewModel(
 
     init {
         viewModelScope.launch {
-            // 每天首次进首页时补算一次重学积压快照 —— 快照不是今天写的就刷新，见
-            // StudyRepository.refreshRelearnBacklogIfStale 的说明。
-            studyRepository.refreshRelearnBacklogIfStale(
+            // 只在从没写过快照时补算一次 —— 之后只在复习结束时更新，见
+            // StudyRepository.bootstrapRelearnBacklogIfAbsent 的说明（里面记着一次教训）。
+            studyRepository.bootstrapRelearnBacklogIfAbsent(
                 settingsRepository.srsSettings.first().studyDeckId
             )
         }

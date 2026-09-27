@@ -55,8 +55,11 @@ abstract class AppDatabase : RoomDatabase() {
          * v1 → v2：加 `words.synonyms` 列与 `word_relations` 表。
          *
          * 用户说过不在意真机上的数据，但这两句的成本是五行、换来的是已经导进去的
-         * 几千个词和全部学习进度，没有理由不写。`fallbackToDestructiveMigration()`
-         * 留作兜底：万一以后某次忘了写迁移，宁可清库也不要启动即崩。
+         * 几千个词和全部学习进度，没有理由不写。
+         *
+         * （这里原先写着「`fallbackToDestructiveMigration()` 留作兜底：万一以后某次忘了
+         * 写迁移，宁可清库也不要启动即崩」—— 2026-09-26 那次清库证明这个取舍是反的，
+         * 兜底已经拿掉，理由见 [build]。）
          *
          * `ALTER TABLE ADD COLUMN` 会把新列加到表末尾，与 Room 生成的顺序不同 ——
          * 这没关系，Room 的 schema 校验是按列名比对，不看顺序。
@@ -90,7 +93,20 @@ abstract class AppDatabase : RoomDatabase() {
                 // 级联删除无需额外配置。
                 .setJournalMode(JournalMode.WRITE_AHEAD_LOGGING)
                 .addMigrations(MIGRATION_1_2)
-                .fallbackToDestructiveMigration()
+                // ⚠️ 刻意**不**调用 `fallbackToDestructiveMigration()`，别再把它加回来。
+                //
+                // 它只兜「找不到迁移路径」这一种情况，而且兜得非常"成功"：不崩、不报错、
+                // 只在 logcat 里留一行，直接把用户的表全删了重建。
+                // 2026-09-26 就是这么丢掉了整个学习库 —— 3271 个词、554 条记忆状态、
+                // 2032 条作答日志、7879 条词关联，一夜归零；现场唯一的症状是界面显示
+                // 「词库还是空的」，看不出是清库。
+                //
+                // 不写它，缺迁移时 Room 会抛 `IllegalStateException` 当场崩 —— 这是**故意**的：
+                // 崩了数据原样躺在盘上，补一个 Migration 就能救回来；清库没有任何补救路径。
+                // 两害相权：宁可启动即崩，也不要静默清库。
+                //
+                // 于是有一条硬纪律：**改 entities / 任何 @Entity / @ColumnInfo，就必须同时
+                // 升 version 并写对应的 Migration**。`MigrationChainTest` 会在单测里挡住漏写。
                 .build()
     }
 }

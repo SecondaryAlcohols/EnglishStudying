@@ -97,10 +97,26 @@ class SettingsRepository(private val context: Context) {
     }
 
     /**
+     * 自上次复习结束以来「遗忘」掉的词数（在复习卡上按「忘记」）。
+     *
+     * 界面上 `上限 50+N` 的 N = [relearnBacklog] + 这个数：
+     *  - 复习中每忘一个 +1，当场显示；
+     *  - 复习结束时 [setRelearnBacklog] 把它和新快照在**同一个 edit** 里归零 —— 那一刻新
+     *    快照已按真实积压重算（含这次忘的、扣掉这次重学完的），所以 N 平滑落回真实值。
+     *
+     * 存 DataStore 而不是只放 ViewModel 里，有两个理由：首页和卡片页分属两个 ViewModel，
+     * 放内存里两边会对不上；而且杀进程重进也不会把「这次已经忘了几个」丢掉。
+     */
+    val relearnSessionLapses: Flow<Int> = context.dataStore.data.map { prefs ->
+        prefs[Keys.RELEARN_SESSION_LAPSES] ?: 0
+    }
+
+    /**
      * 快照是哪天写下的；**从没写过时是 null**。
      *
-     * 用来区分「压根没算过」（装完新版本、还没走完一次复习 → 应该补算一次，否则界面
-     * 会显示 `50+0`，而实际积压可能有 7 个）和「算出来就是 0」（真的没有重学任务）。
+     * 只用来区分「压根没算过」（装完新版本 / 清了应用数据 → 应该补算一次）和「算过了」。
+     * **不要拿它做「不是今天写的就重算」**：那等于在任意时刻拿中间状态覆盖上次复习结束的
+     * 结果（2026-09-27 那次就是这么写进一个假的 0）。规则是只在复习结束时算一次。
      */
     val relearnBacklogDay: Flow<Long?> = context.dataStore.data.map { prefs ->
         prefs[Keys.RELEARN_BACKLOG_DAY]
@@ -154,6 +170,16 @@ class SettingsRepository(private val context: Context) {
         context.dataStore.edit { prefs ->
             prefs[Keys.RELEARN_BACKLOG] = count
             prefs[Keys.RELEARN_BACKLOG_DAY] = epochDay
+            // 归零必须和新快照在同一个 edit 里：分两次写会出现「计数已清、新值还没落」的
+            // 中间态，界面上那个 N 会短暂往下掉一下
+            prefs[Keys.RELEARN_SESSION_LAPSES] = 0
+        }
+    }
+
+    /** 记一次「忘记」：会话内的遗忘计数 +1（见 [relearnSessionLapses]）。 */
+    suspend fun bumpRelearnSessionLapses() {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.RELEARN_SESSION_LAPSES] = (prefs[Keys.RELEARN_SESSION_LAPSES] ?: 0) + 1
         }
     }
 
@@ -205,6 +231,7 @@ class SettingsRepository(private val context: Context) {
          */
         val RELEARN_BACKLOG = intPreferencesKey("relearn_backlog")
         val RELEARN_BACKLOG_DAY = longPreferencesKey("relearn_backlog_day")
+        val RELEARN_SESSION_LAPSES = intPreferencesKey("relearn_session_lapses")
 
         val srsKeys = listOf(
             DAILY_NEW_LIMIT, DAILY_REVIEW_LIMIT, NEW_WORD_ORDER, LEARNING_STEPS,

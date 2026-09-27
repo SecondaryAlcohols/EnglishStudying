@@ -47,10 +47,13 @@ data class DailyProgress(
     /** 上面那些里今天已经学完的（掌握），含今天重学完的。 */
     val masteredToday: Int = 0,
     /**
-     * 还压在重学里的词数，界面上显示成 `上限 50+N`。
+     * 界面上 `上限 50+N` 里的那个 N = **上次复习结束冻结的积压 + 这次会话已经忘了几个**。
      *
-     * **既不是「今天新产生的」，也不是现算的**：它是上一次复习结束那一刻冻结下来的
-     * 积压值，存在 DataStore 里，所以能跨天稳定地摆着，直到下次复习结束才更新。
+     * 两段都存在 DataStore 里（见 `SettingsRepository`）：冻结的那段只在复习结束时按真实积压
+     * 重算；会话那段复习中每忘一个 +1，复习结束时随新快照一起归零（同一个 edit，原子）。
+     * 于是 N 在复习中一直往上走、看得见，复习一结束就落回真实值，而且**卡片页和学习首页
+     * 读到的是同一个数**。
+     *
      * 它**不占新词额度** —— `dailyNewLimit` 算的始终是新词，这是贴在旁边额外显示的一项。
      */
     val relearnPending: Int = 0,
@@ -409,8 +412,9 @@ class StudyRepository(
     /**
      * 冻结一次重学积压快照 —— 在**复习结束时**调用一次。
      *
-     * 取的是那一刻还压在重学里的词数，存进 DataStore 后界面就一直读它。所以这个数不会因为
-     * 你随后重学完几个词而往下掉，也不会在半夜归零；它只在下次复习结束时更新。
+     * 取那一刻还压在重学里的词数（含这次忘的、扣掉这次重学完的），存进 DataStore，同时把
+     * 会话内的遗忘计数归零。所以冻结值只在复习结束时更新，会话计数只增不减地负责「复习中
+     * 看得见」，两者相加就是界面上的 N。
      *
      * 按 [deckId] 过滤，是为了让它和旁边的初学 / 掌握 / 上限处在同一个学习范围。代价是
      * 中途换学习词表的话，这个冻结值会停留在旧范围上，直到下次复习结束。
@@ -423,14 +427,26 @@ class StudyRepository(
     }
 
     /**
-     * 快照不是今天写的（或压根没写过）就补算一次。每天首次进首页时调一次。
+     * 记一次「遗忘」：在复习卡上按了「忘记」，会话内的遗忘计数 +1。
      *
-     * 补这一步是因为「只在复习结束刷新」有个缺口：某天没把队列走完，那个数就会一直停在
-     * 旧值，跨天也不动 —— 而它旁边的初学 / 掌握每天零点就归零了，两排数字会互相矛盾。
-     * 每天首次进来刷一次之后，当天之内仍然只在复习结束时更新，冻结语义不变。
+     * 只该在**复习阶段的忘记**上调用 —— `lapses` 也只在那时 +1（新词在学习步里按忘记不算），
+     * 两边口径必须一致，否则会话中涨的数和复习结束时落回的值会对不上。
      */
-    suspend fun refreshRelearnBacklogIfStale(deckId: Long?) {
-        if (settingsStore.relearnBacklogDay.first() != today().toEpochDay()) {
+    suspend fun recordForgottenWord() = settingsStore.bumpRelearnSessionLapses()
+
+    /**
+     * 只在**从来没写过**快照时补算一次（装完新版本、清了应用数据）。
+     *
+     * 刻意**不**按「不是今天写的」去重算。上学过一次当：2026-09-27 早上 10:01 打开 App 时
+     * 按「跨天」重算了一次，而那一刻当天的复习根本没走完 —— 拿一个中间状态覆盖掉了上次
+     * 复习结束留下的值，写进去一个假的 0，之后界面一直显示 `50` 而没有 `+N`。
+     * 规则是「**复习结束时算一次**」：除了复习结束，任何时刻都不该重算。
+     *
+     * 只保留这一次引导是因为：没有它的话，一个从来不把队列走完的用户永远看不到这个数
+     * （值永远是初始的 0）。写过之后这一支就再不走。
+     */
+    suspend fun bootstrapRelearnBacklogIfAbsent(deckId: Long?) {
+        if (settingsStore.relearnBacklogDay.first() == null) {
             snapshotRelearnBacklog(deckId)
         }
     }
@@ -480,13 +496,14 @@ class StudyRepository(
             intermediate,
             db.reviewDao().observeStartedTodayCount(startMillis, endMillis, deckId),
             db.reviewDao().observeMasteredTodayCount(startMillis, endMillis, deckId),
-            // 积压值不走 Room 查询：它是一份冻结的快照，读的是 DataStore 里存下的那次结果
-            settingsStore.relearnBacklog
-        ) { p, started, mastered, relearnPending ->
+            // 积压值不走 Room：它是 DataStore 里存的两段（复习结束冻结的 + 会话中已忘的）
+            settingsStore.relearnBacklog,
+            settingsStore.relearnSessionLapses
+        ) { p, started, mastered, frozenBacklog, sessionLapses ->
             p.copy(
                 startedToday = started,
                 masteredToday = mastered,
-                relearnPending = relearnPending
+                relearnPending = frozenBacklog + sessionLapses
             )
         }
 
