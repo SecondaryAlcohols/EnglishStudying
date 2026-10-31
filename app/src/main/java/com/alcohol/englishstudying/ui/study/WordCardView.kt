@@ -126,7 +126,9 @@ private fun FieldBlock(
                 val parsed = MeaningParser.parseAll(meanings)
                 // 词性逐条挂在释义前。第一条释义自己没写词性时，pos 列的值兜底补上
                 // （but：pos 列 conj.，其余释义各自带 prep./adv./n.…… 首条也要有着落）
-                val globalPos = word.partOfSpeech?.takeIf { it.isNotBlank() }
+                // pos 列是 ECDICT 原样（`a.` / `ad.` 居多），要过一遍归一化，
+                // 否则首条绿框写 `a.`、下面几条写 `adj.`，看着像两种词性。
+                val globalPos = MeaningParser.normalizePos(word.partOfSpeech)
                 Column {
                     parsed.forEachIndexed { index, item ->
                         if (index > 0) Spacer(Modifier.height(4.dp))

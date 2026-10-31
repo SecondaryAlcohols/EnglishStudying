@@ -146,7 +146,7 @@ fun MixRatioField(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
         )
         Text(
-            "按重要度把范围内的新词三等分为 易/中/难，按比例交错抽取。" +
+            "按 COCA 排名把范围内的新词三等分为 易/中/难，按比例交错抽取。" +
                 "例：5:3:2 表示每 10 个新词里 5 个易、3 个中、2 个难；" +
                 "某个难度的词不够时自动用其他难度补足。",
             style = MaterialTheme.typography.bodySmall,
@@ -162,7 +162,7 @@ fun MixRatioField(
  * 名额按各词表的**未学词数**分配，不是按词表总词数 —— 所以这里只列名字不印词数，
  * 免得那个总数被当成权重。
  *
- * 一个都不选 = 不限制词表（退化成按重要度），而不是「什么都不抽」：
+ * 一个都不选 = 不限制词表（退化成按词频排名），而不是「什么都不抽」：
  * 后者会让一个还没配完的设置看起来像坏了。这条后果写在下面那行说明里。
  */
 @OptIn(ExperimentalLayoutApi::class)
@@ -193,7 +193,7 @@ fun WeightedDeckField(
         }
         Text(
             if (selected.isEmpty()) {
-                "一个词表都没选：不限制词表，等同于「按重要度」抽取。"
+                "一个词表都没选：不限制词表，等同于「按词频排名」抽取。"
             } else {
                 "名额按各词表的未学词数分配，每个选中的词表至少分到 1 个。"
             },

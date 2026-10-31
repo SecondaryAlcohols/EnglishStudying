@@ -51,4 +51,34 @@ object ChainGrouper {
             .sortedBy { index -> firstIndex.getValue(keys[index]) }
             .map { items[it] }
     }
+
+    /**
+     * 先按 [sectionOf] 把条目切成几段（段的先后按首次出现的顺序），每段各自 [group]，
+     * 再按原段序拼回去 —— **段与段之间绝不互相搬运**。
+     *
+     * 用于「同一组变形的词放在一起背」：建队顺序是「复习卡 → 学习卡 → 新词」，而 [group]
+     * 是按「组内第一个成员的位置」整组搬运的。整队一起排时，队尾的新词会被复习卡里的
+     * 同形词（`knows` → `know`、`leaves` → `leave`）提到复习流中间 —— 复习只走了十几张
+     * 就先学了两个新词，首页「初学 / 掌握」跟着提前跳数，看着像复习没完就进了学习
+     * （2026-10-26 真机实测）。分段之后连排只在同类卡内部生效，新词留在新词区。
+     */
+    fun <T> groupBySection(
+        items: List<T>,
+        keyOf: (T) -> Long,
+        pairs: Collection<Pair<Long, Long>>,
+        sectionOf: (T) -> Int
+    ): List<T> {
+        if (items.size < 2) return items
+
+        // LinkedHashMap：段的先后 = 首次出现的先后，拼回来仍是「已学卡 → 新词」
+        val sections = LinkedHashMap<Int, MutableList<T>>()
+        items.forEach { sections.getOrPut(sectionOf(it)) { ArrayList() }.add(it) }
+        if (sections.size < 2) return group(items, keyOf, pairs)
+
+        return sections.values.flatMap { section ->
+            // 只留下两端都在本段里的边：跨段的边一律不参与，否则并查集会把两段接上
+            val ids = section.mapTo(HashSet(section.size), keyOf)
+            group(section, keyOf, pairs.filter { it.first in ids && it.second in ids })
+        }
+    }
 }

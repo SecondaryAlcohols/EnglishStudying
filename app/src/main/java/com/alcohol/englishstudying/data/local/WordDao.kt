@@ -26,6 +26,9 @@ interface WordDao {
     /**
      * 按小写比对。单词的大小写不该产生两个词条 —— 「Absent」和「absent」必须视为同一个，
      * 否则重复导入同一份词库会不断堆出副本。传进来的 key 需要预先转小写。
+     *
+     * 比对忽略大小写 ≠ 存储忽略大小写：词头始终按原样保存，`England` 不会变成 `england`。
+     * 合并时只会把全小写的旧拼写升级成带大写的写法，见 `preferredHeadwordCasing`。
      */
     @Query("SELECT * FROM words WHERE LOWER(headword) IN (:lowercaseHeadwords)")
     suspend fun findByLowercaseHeadwords(lowercaseHeadwords: List<String>): List<WordEntity>
@@ -69,13 +72,18 @@ interface WordDao {
                    AND IFNULL(s.state, 'NEW') = :stateFilter
                )
           )
+          -- 「优先学」是独立于学习状态的一类；和其他筛选项叠加时取交集。
+          -- 再要求没有 review_states 行：万一某次抽词后进程被杀、标记没来得及清，
+          -- 已经学起来的词也不会赖在「优先学」里。
+          AND (:priorityOnly = 0 OR (w.priority = 1 AND s.state IS NULL))
         ORDER BY w.headword COLLATE NOCASE ASC
         """
     )
     fun observeList(
         query: String,
         deckId: Long?,
-        stateFilter: CardState?
+        stateFilter: CardState?,
+        priorityOnly: Boolean
     ): Flow<List<WordListRow>>
 
     @Query(
@@ -92,12 +100,36 @@ interface WordDao {
 
     // ---- 抽取新词：三种顺序各一条 SQL，避免在 Kotlin 里对全表排序 ----
 
+    /**
+     * 「优先学」池：当前范围内还没学过、且被标为优先的词。
+     *
+     * 抽新词时先取它，剩下的名额再按用户选的顺序填 —— 所以这里的排序只影响
+     * 优先池内部的先后（仍按 COCA 排名，越常用越靠前）。
+     */
+    @Query(
+        """
+        SELECT * FROM words
+        WHERE priority = 1
+          AND id NOT IN (SELECT wordId FROM review_states)
+          AND (:deckId IS NULL OR id IN (SELECT wordId FROM deck_words WHERE deckId = :deckId))
+        ORDER BY (frequency <= 0) ASC, frequency ASC, id ASC
+        LIMIT :limit
+        """
+    )
+    suspend fun priorityNewWords(limit: Int, deckId: Long?): List<WordEntity>
+
+    /**
+     * 按 COCA 排名抽新词：**数字越小越常用，越先学**。
+     *
+     * 排序里那两个 `(frequency <= 0)` 是给「没有排名」的词留的：0 不是「第一名」，
+     * 而是查不到，必须排在所有有排名的词后面，否则没词频的专有名词会全部挤到最前。
+     */
     @Query(
         """
         SELECT * FROM words
         WHERE id NOT IN (SELECT wordId FROM review_states)
           AND (:deckId IS NULL OR id IN (SELECT wordId FROM deck_words WHERE deckId = :deckId))
-        ORDER BY frequency DESC, id ASC
+        ORDER BY (frequency <= 0) ASC, frequency ASC, id ASC
         LIMIT :limit
         """
     )
@@ -135,16 +167,19 @@ interface WordDao {
     fun observeNewCount(deckId: Long?): Flow<Int>
 
     /**
-     * 范围内全部未学词的 id 和重要度（轻量行，不拉整个词条）。
+     * 范围内全部未学词的 id 和 COCA 排名（轻量行，不拉整个词条）。
      * 供「按难度混合」在全量上做三等分 —— 只取头部一小段的话，
-     * 三档全是高重要度词，难度混合名存实亡。
+     * 三档全是高频词，难度混合名存实亡。
+     *
+     * 顺序是 **排名升序（越常用越靠前）**，没有排名的（0）垫底；
+     * [com.alcohol.englishstudying.domain.srs.NewWordMixer.mix] 依赖这个顺序切三等分。
      */
     @Query(
         """
         SELECT id, frequency FROM words
         WHERE id NOT IN (SELECT wordId FROM review_states)
           AND (:deckId IS NULL OR id IN (SELECT wordId FROM deck_words WHERE deckId = :deckId))
-        ORDER BY frequency DESC, id ASC
+        ORDER BY (frequency <= 0) ASC, frequency ASC, id ASC
         """
     )
     suspend fun unlearnedFrequencies(deckId: Long?): List<UnlearnedFrequency>
@@ -154,6 +189,16 @@ interface WordDao {
 
     @Insert
     suspend fun insert(word: WordEntity): Long
+
+    /** 「优先学」开关。只改这一列，不碰 updatedAt 以外的任何内容。 */
+    @Query("UPDATE words SET priority = :priority, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun setPriority(id: Long, priority: Boolean, updatedAt: Long)
+
+    /**
+     * 抽走之后清掉优先标记。调用方负责分块（见 [AppDatabase.SQLITE_BIND_LIMIT]）。
+     */
+    @Query("UPDATE words SET priority = 0 WHERE id IN (:ids)")
+    suspend fun clearPriority(ids: List<Long>)
 
     @Insert
     suspend fun insertAll(words: List<WordEntity>): List<Long>

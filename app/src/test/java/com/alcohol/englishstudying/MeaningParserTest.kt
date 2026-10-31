@@ -99,4 +99,49 @@ class MeaningParserTest {
         assertEquals("v.", MeaningParser.parse("V. 展示").pos)
         assertEquals("n.", MeaningParser.parse("N. 礼物").pos)
     }
+
+    /**
+     * 回归：`ad.` / `int.` 原先不在缩写表里，整行原样落在正文，绿色词性框根本不出现
+     * （2026-10-26 用户截图：`random` 的「ad. 胡乱地」、`done` 的「int. （表示接受建议）」）。
+     * 全库统计里 `ad.` 有 335 行、`int.` 5 行，是这次最大的一批。
+     */
+    @Test
+    fun `ad 与 int 也能进词性框`() {
+        val ad = MeaningParser.parse("ad. 胡乱地")
+        assertEquals("adv.", ad.pos)
+        assertEquals("胡乱地", ad.text)
+
+        val int = MeaningParser.parse("int. （表示接受建议）")
+        assertEquals("interj.", int.pos)
+        assertEquals("（表示接受建议）", int.text)
+    }
+
+    /** 短写归一：`a.` / `ad.` / `int.` 分别是 `adj.` / `adv.` / `interj.` 的另一种写法。 */
+    @Test
+    fun `短写词性归一成长写`() {
+        assertEquals("adj.", MeaningParser.parse("a. 现在的, 出席的").pos)
+        assertEquals("adv.", MeaningParser.parse("ad. 大约, 四处").pos)
+        assertEquals("interj.", MeaningParser.parse("int. 哦").pos)
+    }
+
+    /** `aux.v.` 是两个缩写连写，整段算词性，不能把 `v.` 留在正文里。 */
+    @Test
+    fun `aux_v 连写整体当词性`() {
+        val item = MeaningParser.parse("aux.v. 能, 可以")
+        assertEquals("aux.v.", item.pos)
+        assertEquals("能, 可以", item.text)
+    }
+
+    @Test
+    fun `词性列也做同样的归一`() {
+        assertEquals("adj.", MeaningParser.normalizePos("a."))
+        assertEquals("adv.", MeaningParser.normalizePos("ad."))
+        assertEquals("interj.", MeaningParser.normalizePos("int."))
+        assertEquals("n.", MeaningParser.normalizePos("n."))
+        // 复合写法逐段归一，分隔符原样保留
+        assertEquals("vt. / vi.", MeaningParser.normalizePos("vt. / vi."))
+        assertEquals("n. / v.", MeaningParser.normalizePos("n. / v."))
+        assertNull(MeaningParser.normalizePos(null))
+        assertNull(MeaningParser.normalizePos("   "))
+    }
 }

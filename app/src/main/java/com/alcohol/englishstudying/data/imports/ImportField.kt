@@ -63,8 +63,10 @@ enum class ImportField(
         )
     ),
     FREQUENCY(
-        "重要度",
-        setOf("frequency", "freq", "rank", "weight", "importance", "重要度", "词频", "频率", "权重", "序号")
+        "COCA 排名",
+        // 只认「排名」口径的列名。刻意不收 importance / weight / 重要度 / 权重：
+        // 那些列是老词库里 0-90 的分数，当成排名读会把最常用的词排到最后。
+        setOf("frequency", "freq", "rank", "coca", "coca_rank", "coca排名", "词频", "频率", "序号")
     ),
     DECK(
         "词表",

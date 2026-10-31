@@ -5,6 +5,7 @@ import com.alcohol.englishstudying.data.local.AppDatabase
 import com.alcohol.englishstudying.data.local.DeckEntity
 import com.alcohol.englishstudying.data.local.DeckWordEntity
 import com.alcohol.englishstudying.data.local.WordEntity
+import com.alcohol.englishstudying.domain.model.MeaningParser
 
 /** 归一后、准备写库的一条词。 */
 data class ImportedWord(
@@ -44,6 +45,7 @@ class WordImporter(
         val issues = mutableListOf<ImportIssue>()
         val accepted = mutableListOf<ImportedWord>()
         val firstSeenAtLine = mutableMapOf<String, Int>()
+        val acceptedIndexByKey = mutableMapOf<String, Int>()
 
         rows.forEach { row ->
             val headword = row.value(ImportField.HEADWORD)
@@ -74,10 +76,19 @@ class WordImporter(
             val key = headword.lowercase()
             val previousLine = firstSeenAtLine[key]
             if (previousLine != null) {
+                // 同一份文件里「england」和「England」是同一个词，只留一条 —— 但留**带大写**的那个拼写。
+                // 大小写在这里是数据而不是格式：专有名词一旦被压成小写，界面上就再也修不回来了。
+                acceptedIndexByKey[key]?.let { index ->
+                    val previous = accepted[index]
+                    accepted[index] = previous.copy(
+                        headword = preferredHeadwordCasing(previous.headword, headword)
+                    )
+                }
                 issues += ImportIssue(row.rowNumber, "与第 $previousLine 行的「$headword」重复，已跳过")
                 return@forEach
             }
             firstSeenAtLine[key] = row.rowNumber
+            acceptedIndexByKey[key] = accepted.size
             accepted += row.toImportedWord(headword)
         }
 
@@ -110,13 +121,24 @@ class WordImporter(
 
             val toInsert = mutableListOf<WordEntity>()
             val toUpdate = mutableListOf<WordEntity>()
+            val takenHeadwords = existingByLowercase.values.mapTo(mutableSetOf()) { it.headword }
 
             accepted.forEach { incoming ->
                 val existing = existingByLowercase[incoming.headword.lowercase()]
                 if (existing == null) {
                     toInsert += incoming.toEntity(timestamp)
                 } else {
-                    toUpdate += incoming.mergeInto(existing, timestamp)
+                    val merged = incoming.mergeInto(existing, timestamp)
+                    // 大小写升级要避开唯一索引：库里若同时有「china」和「China」这种历史脏数据，
+                    // 把前者改名就会撞上后者，宁可放弃这次改名也不能让整批导入回滚。
+                    val safe = if (
+                        merged.headword != existing.headword && merged.headword in takenHeadwords
+                    ) {
+                        merged.copy(headword = existing.headword)
+                    } else {
+                        merged
+                    }
+                    toUpdate += safe
                 }
             }
 
@@ -177,7 +199,9 @@ class WordImporter(
     private fun ImportRow.toImportedWord(headword: String) = ImportedWord(
         headword = headword,
         phonetic = value(ImportField.PHONETIC),
-        partOfSpeech = value(ImportField.PART_OF_SPEECH),
+        // 词性列统一成长写（`a.`→`adj.`、`ad.`→`adv.`、`int.`→`interj.`），
+        // 与卡片上的绿框、以及库里已有的数据保持一致；认不出的写法原样保留。
+        partOfSpeech = MeaningParser.normalizePos(value(ImportField.PART_OF_SPEECH)),
         meanings = value(ImportField.MEANINGS),
         mnemonic = value(ImportField.MNEMONIC),
         roots = value(ImportField.ROOTS),
@@ -214,6 +238,9 @@ class WordImporter(
     )
 
     private fun ImportedWord.mergeInto(existing: WordEntity, timestamp: Long) = existing.copy(
+        // 词头本身也参与合并：已有的是全小写、新来的带大写（England），就用新的拼写。
+        // 反过来不会降级 —— 否则重新导入一份全小写的旧词库会把 China 又压回 china。
+        headword = preferredHeadwordCasing(existing.headword, headword),
         phonetic = phonetic ?: existing.phonetic,
         partOfSpeech = partOfSpeech ?: existing.partOfSpeech,
         meanings = meanings ?: existing.meanings,
@@ -231,4 +258,20 @@ class WordImporter(
         private const val MAX_HEADWORD_LENGTH = 100
         private const val MAX_FIELD_LENGTH = 8000
     }
+}
+
+/**
+ * 同一个词（忽略大小写相同）在库里只留一个拼写时，选哪一个。
+ *
+ * 规则只有一条：**大写是信息，小写是缺省**。
+ *  - 旧的是 `england`、新来的是 `England` → 采用 `England`，专有名词的拼写被修正；
+ *  - 旧的是 `China`、新来的是 `china` → 保留 `China`，重新导入一份全小写词库不会把大写洗掉；
+ *  - 拼写完全相同 → 原样保留。
+ *
+ * 不做「谁后到谁赢」：那会让同一份词库分两次导入得到不同结果。
+ */
+internal fun preferredHeadwordCasing(existing: String, incoming: String): String = when {
+    !existing.equals(incoming, ignoreCase = true) -> existing
+    existing == existing.lowercase() && incoming != incoming.lowercase() -> incoming
+    else -> existing
 }

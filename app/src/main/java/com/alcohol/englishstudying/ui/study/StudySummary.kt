@@ -127,7 +127,7 @@ private fun SummaryRow(item: GroupItem, onSpeak: () -> Unit, onOpenWord: () -> U
     // 逐条解析出各自的词性；都没有词性时退回 pos 列那一个值
     val parsed = MeaningParser.parseAll(word.meaningList)
     val anyPos = parsed.any { it.pos != null }
-    val globalPos = word.partOfSpeech?.takeIf { it.isNotBlank() && !anyPos }
+    val globalPos = MeaningParser.normalizePos(word.partOfSpeech)?.takeIf { !anyPos }
 
     // 整行可点：跳到这个词的详情页。行内的喇叭自己消费点击，不会连带跳走
     Column(

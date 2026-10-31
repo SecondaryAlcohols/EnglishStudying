@@ -36,6 +36,11 @@ data class StudyHomeUiState(
      * 重学词只是额外贴上来显示的一项，所以界面上写成 `50+17` 而不是并进那个数字。
      */
     val relearnPending: Int = 0,
+    /**
+     * 今天标为「太难」的新词数 —— 已从 [newLimit] 里扣掉。它们不进 [startedToday] /
+     * [masteredToday]：放弃的词不装作学过，但名额照扣，所以上限那个数字要跟着往下走。
+     */
+    val tooHardNewToday: Int = 0,
     val newLimit: Int = 0,
     val reviewDoneToday: Int = 0,
     /** 处于学习步内（学习中或重学中）的卡数。 */
@@ -54,9 +59,15 @@ data class StudyHomeUiState(
     /** 冷却中最快到期的卡片剩余等待分钟数。 */
     val coolingWaitMinutes: Int = 0
 ) {
-    /** 今日常规新词配额剩余。 */
+    /**
+     * 今日常规新词配额剩余。
+     *
+     * 要把 [tooHardNewToday] 加回来：它已经体现在 [newLimit] 的扣减里，而 [newDoneToday]
+     * 数的是「今天离开未学池的词」，里面本来就含这批太难词 —— 不补回来的话，
+     * 每标一次「太难」就把剩余额度多扣一次。
+     */
     val newQuotaRemaining: Int
-        get() = (newLimit - newDoneToday).coerceAtLeast(0)
+        get() = (newLimit + tooHardNewToday - newDoneToday).coerceAtLeast(0)
 
     /** 今日常规计划是否已经完成（无到期复习、无冷却中词、且新词配额已达标）。 */
     val isDailyGoalAchieved: Boolean
@@ -87,10 +98,12 @@ private data class HomeCounts(
     val newRemaining: Int,
     val learnedToday: Int,
     val answeredToday: Int,
+    val reviewDoneToday: Int,
     val regularDueCount: Int,
     val reviewTableCount: Int,
     val startedToday: Int,
     val masteredToday: Int,
+    val tooHardNewToday: Int,
     val relearnPending: Int,
     val coolingCount: Int,
     val coolingWaitMinutes: Int,
@@ -144,10 +157,19 @@ class StudyHomeViewModel(
                     newRemaining = newRemaining,
                     learnedToday = learnedToday,
                     answeredToday = progress.answeredToday,
-                    regularDueCount = progress.dueCount,
+                    reviewDoneToday = progress.reviewDoneToday,
+                    // 「待复习」= 今天还发得出来的复习卡 + 学习步里已经到期的卡。
+                    // 复习卡按每日上限剩余额度截断（用完就是 0）；学习卡是在途的卡，
+                    // 不受复习上限影响，照常算进来。
+                    regularDueCount = run {
+                        val learningDue = (progress.learningCount - progress.coolingCount).coerceAtLeast(0)
+                        val reviewDue = (progress.dueCount - learningDue).coerceAtLeast(0)
+                        minOf(reviewDue, progress.reviewBudgetRemaining) + learningDue
+                    },
                     reviewTableCount = reviewTableCount,
                     startedToday = progress.startedToday,
                     masteredToday = progress.masteredToday,
+                    tooHardNewToday = progress.tooHardNewToday,
                     relearnPending = progress.relearnPending,
                     coolingCount = progress.coolingCount,
                     coolingWaitMinutes = progress.coolingWaitMinutes,
@@ -162,9 +184,17 @@ class StudyHomeViewModel(
                     ?.let { id -> decks.firstOrNull { it.id == id }?.name }
                     ?: "全部词库"
 
-                // 今日已作答的词里，有一部分是今天新学的。剩下的就是复习。
-                val reviewDone = (c.answeredToday - c.learnedToday).coerceAtLeast(0)
-                val effectiveLimit = maxOf(settings.dailyNewLimit, c.learnedToday)
+                // 今日复习完成的旧词数：DAO 直接查，**不能**拿 answeredToday - learnedToday 去减。
+                // learnedToday 含「今天新学、没作答就被标为太简单 / 太难」的词（不写日志），
+                // 两者不是包含关系，减出来会把复习数多扣掉。旧词被移出学习的那些反而**要算**
+                // 进复习数（DAO 里按 lastReviewedAt 认），减法更是数不出来。
+                val reviewDone = c.reviewDoneToday
+                // 上限 = 每日新词上限 − 今天标「太难」的新词数。maxOf 是「把上限调小之后
+                // 已学超过上限」的托底（显示 36/36 而不是 36/20）；扣减放在 maxOf 外面，
+                // 否则太难词会从 learnedToday 那边把扣掉的名额又顶回来。
+                val effectiveLimit =
+                    (maxOf(settings.dailyNewLimit, c.learnedToday) - c.tooHardNewToday)
+                        .coerceAtLeast(0)
 
                 StudyHomeUiState(
                     loading = false,
@@ -175,6 +205,7 @@ class StudyHomeViewModel(
                     newDoneToday = c.learnedToday,
                     startedToday = c.startedToday,
                     masteredToday = c.masteredToday,
+                    tooHardNewToday = c.tooHardNewToday,
                     relearnPending = c.relearnPending,
                     newLimit = effectiveLimit,
                     reviewDoneToday = reviewDone,

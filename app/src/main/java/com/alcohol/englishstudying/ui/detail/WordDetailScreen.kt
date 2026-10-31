@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -81,6 +82,9 @@ fun WordDetailScreen(
     // 还要靠「这行在不在」判断该词能不能被设置 —— 新词没有行，也就不能设置
     var reviewState by remember(wordId) { mutableStateOf<ReviewStateEntity?>(null) }
     var decks by remember(wordId) { mutableStateOf<List<String>>(emptyList()) }
+    // reviewState 是异步取回来的：null 既可能是「还没取到」，也可能是「确实没学过」。
+    // 没有这个旗标的话，已学过的词进页面会先闪一下「优先学」按钮。
+    var stateLoaded by remember(wordId) { mutableStateOf(false) }
     var showScheduleDialog by remember(wordId) { mutableStateOf(false) }
     // 改完下次复习时间要重取一次。用计数器当 key，比在回调里手写重复的取数逻辑干净
     var reloadTick by remember(wordId) { mutableIntStateOf(0) }
@@ -88,6 +92,7 @@ fun WordDetailScreen(
     LaunchedEffect(wordId, reloadTick) {
         reviewState = container.database.reviewDao().get(wordId)
         decks = container.decks.decksForWord(wordId).map { it.name }
+        stateLoaded = true
     }
 
     // 词条、关联词、字段配置三个流合成一个快照。initialValue 的 null 表示
@@ -179,6 +184,18 @@ fun WordDetailScreen(
                             reviewState = reviewState,
                             onSetDays = { showScheduleDialog = true }
                         )
+                        // 没学过的词没有复习时间可设，那个位置放「优先学」开关。
+                        // 已经开始的词不进新词池，标了也不会被抽，所以只对新词显示。
+                        if (stateLoaded && reviewState == null) {
+                            PriorityBadge(
+                                selected = current.priority,
+                                onToggle = {
+                                    scope.launch {
+                                        container.words.setPriority(current.id, !current.priority)
+                                    }
+                                }
+                            )
+                        }
                         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
 
                         Column(
@@ -255,6 +272,57 @@ private fun ScheduleBadge(reviewState: ReviewStateEntity?, onSetDays: () -> Unit
                     contentDescription = "设置下次复习",
                     modifier = Modifier.size(14.dp),
                     tint = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 「优先学」开关，占的就是「N 天后复习」那个位置 —— 没学过的词没有排期可设。
+ *
+ * 只对没有 `review_states` 行的词显示：已经开始的词不进新词池，标了也不会被抽。
+ * 点一下开，再点一下关；开着的词下一次抽新词时排在最前，被抽走后自动清零。
+ */
+@Composable
+private fun PriorityBadge(selected: Boolean, onToggle: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 20.dp, end = 20.dp, bottom = 10.dp)
+    ) {
+        Surface(
+            shape = MaterialTheme.shapes.small,
+            color = if (selected) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.secondaryContainer
+            },
+            modifier = Modifier.clickable(onClick = onToggle)
+        ) {
+            Row(
+                modifier = Modifier.padding(start = 10.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.Star,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = if (selected) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSecondaryContainer
+                    }
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = if (selected) "已优先学 · 下次先抽" else "优先学 · 下次先抽",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSecondaryContainer
+                    }
                 )
             }
         }

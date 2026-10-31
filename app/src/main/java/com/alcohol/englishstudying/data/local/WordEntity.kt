@@ -51,8 +51,22 @@ data class WordEntity(
     /** 标签，英文逗号分隔。 */
     val tags: String? = null,
 
-    /** 重要度，越大越靠前。用于「按词频优先」抽新词。 */
+    /**
+     * COCA 词频排名：**数字越小越常用**，抽新词时优先。0 表示查不到排名，排在最后。
+     *
+     * 别把它当「重要度」用 —— 旧词库里那种 0-90 的分数已经被统一成排名了。
+     */
     val frequency: Int = 0,
+
+    /**
+     * 「优先学」：下一次抽新词时排在最前，**被抽走的那一刻自动清零**。
+     *
+     * 只对还没学过的词有意义 —— 已经有 `review_states` 行的词不进新词池，标了也不会被抽。
+     * 默认值写在列上（而不是只写 Kotlin 默认参数），迁移 `ALTER TABLE ADD COLUMN`
+     * 才能和 Room 的 schema 校验对上。
+     */
+    @ColumnInfo(defaultValue = "0")
+    val priority: Boolean = false,
 
     val createdAt: Long = 0L,
     val updatedAt: Long = 0L

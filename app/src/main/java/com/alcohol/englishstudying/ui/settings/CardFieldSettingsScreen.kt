@@ -53,7 +53,7 @@ private val SAMPLE_WORD = WordEntity(
     derivations = "absence n. 缺席\nabsent-minded adj. 心不在焉的",
     examples = "He was absent from class again. 他又缺课了。",
     tags = "高频,熟词僻义",
-    frequency = 90
+    frequency = 4000
 )
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -24,6 +25,7 @@ import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -129,7 +131,9 @@ fun LibraryScreen(
                         onStateFilterChange = viewModel::setStateFilter,
                         deckId = state.filters.deckId,
                         decks = state.decks,
-                        onDeckChange = viewModel::setDeckFilter
+                        onDeckChange = viewModel::setDeckFilter,
+                        priorityOnly = state.filters.priorityOnly,
+                        onPriorityChange = viewModel::setPriorityOnly
                     )
 
                     Text(
@@ -190,7 +194,9 @@ private fun SearchAndFilters(
     onStateFilterChange: (CardState?) -> Unit,
     deckId: Long?,
     decks: List<DeckWithCount>,
-    onDeckChange: (Long?) -> Unit
+    onDeckChange: (Long?) -> Unit,
+    priorityOnly: Boolean,
+    onPriorityChange: (Boolean) -> Unit
 ) {
     Column(Modifier.padding(horizontal = 16.dp)) {
         OutlinedTextField(
@@ -219,6 +225,23 @@ private fun SearchAndFilters(
                     label = { Text(label) }
                 )
             }
+            // 「优先学」不是学习状态，而是独立的一类；和上面的状态筛选取交集
+            FilterChip(
+                selected = priorityOnly,
+                onClick = { onPriorityChange(!priorityOnly) },
+                label = { Text("优先学") },
+                leadingIcon = if (priorityOnly) {
+                    {
+                        Icon(
+                            Icons.Filled.Star,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                } else {
+                    null
+                }
+            )
             DeckFilterChip(
                 label = decks.firstOrNull { it.id == deckId }?.name ?: "全部词表",
                 decks = decks,
@@ -294,14 +317,21 @@ private fun WordRow(
             // 摆放（material3 ListItem.kt 的 trailingPlaceable），第二个会被静默丢弃：
             // 没有任何报错，那一行就是不出现
             Column(horizontalAlignment = Alignment.End) {
-                if (onResume != null) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        StateBadge(row.displayState)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (row.word.priority) {
+                        Icon(
+                            Icons.Filled.Star,
+                            contentDescription = "优先学",
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(Modifier.width(4.dp))
+                    }
+                    StateBadge(row.displayState)
+                    if (onResume != null) {
                         Spacer(Modifier.width(6.dp))
                         TextButton(onClick = onResume) { Text("移出") }
                     }
-                } else {
-                    StateBadge(row.displayState)
                 }
                 // 复习倒计时紧贴在状态徽章下面。只给真正参与调度的几种状态显示 ——
                 // 挂起 / 太简单 / 太难的词留着的是被移出之前那一刻的 dueAtMinutes，

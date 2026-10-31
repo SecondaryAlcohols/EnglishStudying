@@ -582,8 +582,12 @@ private fun NextAfterMarkBar(markedAs: CardState, onNext: () -> Unit) {
 
 /**
  * 单词卡界面顶部统计条：
- * - 常规学习：今日复习（今天已复习的单词 / 今天到期的单词）| 今日新词（已学 / 上限）| 学习时间
+ * - 常规学习：今日复习（今天已复习的单词 / 今天可达的复习目标）| 今日新词（已学 / 上限）| 学习时间
  * - 单纯复习：今日复习（单纯复习已复习池的单词 / 复习池的单词）| 今日新词（已学 / 上限）| 学习时间
+ *
+ * 「已复习」含今天被移出学习的旧词 —— 见 [com.alcohol.englishstudying.data.local.ReviewDao.observeReviewDoneCount]。
+ * 分母用 `maxOf` 托底：两者都是查出来的，「已复习」不会超过「到期」的量，
+ * 但重建队列、跨零点等情况下短暂不同步时，宁可显示 `N/N` 也不要出现 `5/3`。
  */
 @Composable
 private fun StatsStrip(
@@ -604,13 +608,20 @@ private fun StatsStrip(
         practicePoolTotal
     } else {
         val done = progress?.reviewDoneToday ?: 0
-        val scheduledToday = progress?.todayDueReviewCount ?: 0
-        maxOf(done, scheduledToday)
+        // reviewTargetToday 已经把每日复习上限算进去：额度用完时它就是
+        // max(已完成, 已过卡)，显示 X/X，不再拿全天到期数（326）画一个走不到的目标。
+        maxOf(done, progress?.reviewTargetToday ?: 0)
     }
 
     val newRecognized = progress?.startedToday ?: 0
     val newGraduated = progress?.masteredToday ?: 0
-    val newLimit = maxOf(settings.dailyNewLimit, progress?.learnedToday ?: 0, extraNewLimit)
+    // 上限只算新词（重学词是额外贴上来的一项）。今天标「太难」的新词从上限里扣掉：
+    // 它们不进初学 / 掌握，但名额照扣 —— 不扣的话会显示「初学 1 / 上限 20」却只剩 17 个可发。
+    // 扣减放在 maxOf **外面**，否则那些词会从 learnedToday 一侧把扣掉的名额顶回来。
+    val tooHardNew = progress?.tooHardNewToday ?: 0
+    val newLimit = (
+        maxOf(settings.dailyNewLimit, progress?.learnedToday ?: 0, extraNewLimit) - tooHardNew
+    ).coerceAtLeast(0)
     // relearnPending 里已经含了「复习中每忘一个 +1」的那一段，见 StudyRepository.relearnPending
     val relearned = progress?.relearnPending ?: 0
     val elapsed = formatElapsed(progress?.elapsedTodayMs ?: 0L)

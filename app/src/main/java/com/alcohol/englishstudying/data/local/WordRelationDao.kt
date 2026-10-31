@@ -26,7 +26,7 @@ interface WordRelationDao {
         INNER JOIN words w
                 ON w.id = CASE WHEN r.fromWordId = :wordId THEN r.toWordId ELSE r.fromWordId END
         WHERE r.fromWordId = :wordId OR r.toWordId = :wordId
-        ORDER BY r.type ASC, w.frequency DESC, w.headword COLLATE NOCASE ASC
+        ORDER BY r.type ASC, (w.frequency <= 0) ASC, w.frequency ASC, w.headword COLLATE NOCASE ASC
         """
     )
     fun observeFor(wordId: Long): Flow<List<RelatedWord>>
@@ -38,7 +38,7 @@ interface WordRelationDao {
         INNER JOIN words w
                 ON w.id = CASE WHEN r.fromWordId = :wordId THEN r.toWordId ELSE r.fromWordId END
         WHERE r.fromWordId = :wordId OR r.toWordId = :wordId
-        ORDER BY r.type ASC, w.frequency DESC, w.headword COLLATE NOCASE ASC
+        ORDER BY r.type ASC, (w.frequency <= 0) ASC, w.frequency ASC, w.headword COLLATE NOCASE ASC
         """
     )
     suspend fun getFor(wordId: Long): List<RelatedWord>
@@ -91,13 +91,14 @@ interface WordRelationDao {
      * 只取推导真正会读的五列，不 `SELECT *` —— words 表里的 meanings / examples
      * 可以很长，全库拉一遍会平白多占几 MB 内存。
      *
-     * 按重要度降序：deriveRoots 截断同根词组时取的是靠前的词，顺序在这里就定好。
+     * 按 COCA 排名升序（越常用越靠前）：deriveRoots 截断同根词组时取的是靠前的词，
+     * 顺序在这里就定好。没有排名的（0）垫底。
      */
     @Query(
         """
         SELECT id, headword, roots, derivations, synonyms
         FROM words
-        ORDER BY frequency DESC, id ASC
+        ORDER BY (frequency <= 0) ASC, frequency ASC, id ASC
         """
     )
     suspend fun relationInputs(): List<RelationInputRow>

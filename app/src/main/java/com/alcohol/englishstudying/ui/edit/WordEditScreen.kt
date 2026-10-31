@@ -174,9 +174,9 @@ fun WordEditScreen(
                 hint = "英文逗号分隔，例：高频,熟词僻义"
             ) { v -> viewModel.update { it.copy(tags = v) } }
             DraftField(
-                label = "重要度",
+                label = "COCA 排名",
                 value = state.draft.frequency,
-                hint = "数字越大越靠前，用于「按重要度优先」抽新词",
+                hint = "数字越小越常用，抽新词时优先；0 表示没有排名，排在最后",
                 keyboardType = KeyboardType.Number
             ) { v -> viewModel.update { it.copy(frequency = v) } }
 

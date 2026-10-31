@@ -132,6 +132,15 @@ class StudyViewModel(
     /** 单纯复习已抽取的词 ID 集合（支持跨组防重复、到期新词自动纳入与轮换重置）。 */
     private var practicedWordIds = mutableSetOf<Long>()
 
+    /**
+     * 本次会话里，排期已经被第一次「模糊」定死的词（见 [rate]）。
+     *
+     * 在圈里的词：再点「模糊」不改排期、只记日志；点「认识」也只记日志然后放它出圈。
+     * 会话内有效 —— 换一组（[startSession]）就清空，因为它描述的是「这一轮还没背熟」，
+     * 不该跨会话继承。
+     */
+    private val lockedWordIds = mutableSetOf<Long>()
+
     /** 进入单纯复习前暂存的常规学习队列，退出练习时无缝恢复。 */
     private var savedRegularQueue: List<StudyCard> = emptyList()
 
@@ -239,6 +248,8 @@ class StudyViewModel(
         viewModelScope.launch {
             markedNext = null
             savedRegularQueue = emptyList()
+            // 换一组 = 新一轮复习，上一轮「还没背熟」的锁不该跟过来
+            lockedWordIds.clear()
             val srsSettings = settings ?: settingsRepository.srsSettings.first()
             _state.update {
                 it.copy(
@@ -262,6 +273,9 @@ class StudyViewModel(
                 extraNewWords = extraNewWords,
                 includeCooling = includeCooling
             )
+            // 今天模糊过、还没再答对的旧词：它们的排期在第一次模糊时就定死了，重新进会话
+            // 也要保持「认识只写日志、不改日期」。见 StudyRepository.hazyWordIdsToday。
+            lockedWordIds.addAll(studyRepository.hazyWordIdsToday(srsSettings.studyDeckId))
             val currentExtraLimit = if (extraNewWords) {
                 val newCount = queue.count { it.state.state == CardState.NEW }
                 val learned = _state.value.progress?.learnedToday ?: 0
@@ -435,6 +449,17 @@ class StudyViewModel(
         _state.update { it.copy(revealed = true, pendingRating = rating) }
     }
 
+    /**
+     * 四个档位怎么落库，全在 [rate] 里分完 —— 因为「复习循环」只在复习阶段生效：
+     *
+     *  - 复习卡点「模糊」：第一次按模糊算排期并**定死**，之后这张卡隔 [RETRY_GAP] 个词再考；
+     *  - 圈里的「模糊」「认识」：只写一行日志，不动排期（认识只负责放它出圈）；
+     *  - 圈里的「忘记」：等同于直接点忘记，排期重算、退回重学，不占重考位置；
+     *  - 其余情况走原来的 [StudyRepository.submit] + [advance]。
+     *
+     * 新词的学习步不受影响：重考位置只发给 `REVIEW` / `RELEARNING` 的卡，而「排期定死」
+     * 更窄 —— 只有本来就在 `REVIEW` 里的卡（模糊算出来的是天级间隔）才谈得上定死。
+     */
     fun rate(rating: Rating) {
         actOnce {
             val card = _state.value.current ?: return@actOnce
@@ -446,6 +471,28 @@ class StudyViewModel(
                 return@actOnce
             }
 
+            val wordId = card.word.id
+            val locked = wordId in lockedWordIds
+            // 复习循环只对「已经学过的词」生效；新词第一次学还是走原来的学习步
+            val isReviewCard = card.state.state == CardState.REVIEW ||
+                card.state.state == CardState.RELEARNING
+
+            // 圈里的认识：排期在第一次「模糊」时就定死了，这里只留一行日志、放它出圈。
+            // 一次认识就够 —— 复习不涉及学习步，不需要再逐步确认。
+            if (rating == Rating.GOOD && locked) {
+                studyRepository.logAnswer(wordId, rating, elapsed, card.state.intervalDays)
+                lockedWordIds.remove(wordId)
+                advance(card, card.state, rating)
+                return@actOnce
+            }
+
+            // 圈里的模糊：排期不动，只留日志，隔 RETRY_GAP 个词再考
+            if (rating == Rating.HARD && locked) {
+                studyRepository.logAnswer(wordId, rating, elapsed, card.state.intervalDays)
+                retryLater(card)
+                return@actOnce
+            }
+
             // 复习卡上按「忘记」= 这个词掉进重学：界面上的 +N 当场 +1。
             // 判据必须和 Sm2Scheduler 里「lapses 何时 +1」一致（只有复习阶段的忘记才 +1），
             // 否则会话中涨的数会和复习结束时落回的值对不上。
@@ -453,8 +500,43 @@ class StudyViewModel(
 
             val next = studyRepository.submit(card, rating, elapsed, _state.value.settings)
             if (lapsed) studyRepository.recordForgottenWord()
-            advance(card, next, rating)
+
+            when {
+                // 忘记：等同于直接点忘记 —— 排期重算、进遗忘流程，再由到期时间把卡带回队列，
+                // 不占「隔 N 个词」那个位置
+                rating == Rating.AGAIN -> {
+                    lockedWordIds.remove(wordId)
+                    advance(card, next, rating)
+                }
+                // 复习卡（含重学中的）点模糊：隔 RETRY_GAP 个词再考。
+                // 只有「模糊」算出了天级间隔（也就是本来就在 REVIEW 里的卡）才把排期定死；
+                // 重学中的卡仍在学习步里，模糊只是原地踏步，下次还得按步骤走。
+                rating == Rating.HARD && isReviewCard -> {
+                    if (next.state == CardState.REVIEW) lockedWordIds.add(wordId)
+                    retryLater(card.copy(state = next))
+                }
+                else -> advance(card, next, rating)
+            }
         }
+    }
+
+    /**
+     * 把一张还没背熟的复习卡排到「隔 [RETRY_GAP] 个词」之后再考一次。
+     *
+     * 不复用 [advance]：它会把卡放到队尾（或按到期时间丢掉），而这里要的是插到第
+     * [RETRY_GAP] 位；它还会把词记进本组小结、给「本次学了 N 张卡」+1 —— 这两件事都只该
+     * 在这张卡真正出圈（认识 / 移出）时发生。
+     */
+    private fun retryLater(card: StudyCard) {
+        val remaining = _state.value.queue.drop(1).toMutableList()
+        // 插到第 RETRY_GAP 个词之后；后面不够这么多词就跟在队尾
+        remaining.add(minOf(RETRY_GAP, remaining.size), card)
+        _state.update {
+            it.copy(queue = remaining, revealed = false, pendingRating = null, markedAs = null)
+        }
+        cardShownAt = System.currentTimeMillis()
+        refreshPreview()
+        observeRelationsForCurrent()
     }
 
     /**
@@ -507,6 +589,8 @@ class StudyViewModel(
         actOnce {
             val card = _state.value.current ?: return@actOnce
             markedNext = studyRepository.exclude(card, target)
+            // 已移出学习，不再重考：把它从「待背熟」的圈里摘掉（和伪代码的 excluded 分支一致）
+            lockedWordIds.remove(card.word.id)
             _state.update {
                 it.copy(
                     // 正面的胶囊点完要直接揭晓。移出学习是不可逆动作，不该在没看到答案时生效；
@@ -557,8 +641,14 @@ class StudyViewModel(
     private fun advance(card: StudyCard, next: SrsState, rating: Rating?) {
         val remaining = _state.value.queue.drop(1).toMutableList()
         if (shouldRequeueToday(next)) {
-            // 学习步还没走完（比如按了「忘记」），今天之内还要再考一次，放回队尾
-            remaining.add(card.copy(state = next))
+            // 复习 / 重学卡插到第一个新词之前（不能掉到新词后面）；新词插到队尾 ——
+            // 规则和理由见 DailyPlanBuilder.requeueIndex。
+            val index = DailyPlanBuilder.requeueIndex(
+                remaining,
+                wasNew = card.state.state == CardState.NEW,
+                isNew = { it.state.state == CardState.NEW }
+            )
+            remaining.add(index, card.copy(state = next))
         }
 
         _state.update {
@@ -635,6 +725,11 @@ class StudyViewModel(
         // 「太简单」已经离开评分栏、搬到卡片行上成为移出学习动作，这里就不给它留预览了 ——
         // 留着的话，SrsScheduler 算出的「4 天」将来某天被谁加回评分栏就会显示成错的间隔
         preview.remove(Rating.EASY)
+        // 排期已经被第一次「模糊」定死的卡：只有「忘记」还会重算，另外两档都不动日期。
+        // 继续在按钮上印「认识 12 天」就是在骗人 —— 按下去什么都不会发生。
+        if (card.word.id in lockedWordIds) {
+            preview.keys.retainAll(setOf(Rating.AGAIN))
+        }
         _state.update { it.copy(previewIntervals = preview) }
     }
 
@@ -647,6 +742,14 @@ class StudyViewModel(
     }
 
     companion object {
+        /**
+         * 复习卡点「模糊」之后，隔多少个词再考一次。
+         *
+         * 取 10 是跟默认的「单词小结」组大小对齐：一条小结（10 张）之后再见到它，
+         * 既不至于立刻重逢，也不会拖到下一个会话。
+         */
+        private const val RETRY_GAP = 10
+
         fun factory(container: AppContainer): ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 StudyViewModel(

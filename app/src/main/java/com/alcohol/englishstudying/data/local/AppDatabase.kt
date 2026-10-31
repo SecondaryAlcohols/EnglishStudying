@@ -17,7 +17,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         DeckWordEntity::class,
         WordRelationEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -87,12 +87,25 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v2 → v3：加 `words.priority` 列（优先学）。
+         *
+         * `ALTER TABLE ADD COLUMN` 必须带 `DEFAULT 0`，和实体上的
+         * `@ColumnInfo(defaultValue = "0")` 对齐 —— Room 的 schema 校验会比较默认值，
+         * 少了它迁移完会报 "Migration didn't properly handle words"。
+         */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `words` ADD COLUMN `priority` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         private fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, DB_NAME)
                 // 声明了 @ForeignKey 后 Room 会在 onOpen 里自动执行 PRAGMA foreign_keys = ON，
                 // 级联删除无需额外配置。
                 .setJournalMode(JournalMode.WRITE_AHEAD_LOGGING)
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 // ⚠️ 刻意**不**调用 `fallbackToDestructiveMigration()`，别再把它加回来。
                 //
                 // 它只兜「找不到迁移路径」这一种情况，而且兜得非常"成功"：不崩、不报错、

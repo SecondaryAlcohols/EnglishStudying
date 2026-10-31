@@ -2,7 +2,7 @@ package com.alcohol.englishstudying.domain.srs
 
 /** 新词的抽取顺序。 */
 enum class NewWordOrder {
-    /** 词频高者优先（frequency 列降序）。 */
+    /** COCA 排名靠前（数字小 = 越常用）优先。0 表示没有排名，排在最后。 */
     FREQUENCY,
 
     /** 按入库顺序。 */
@@ -12,8 +12,9 @@ enum class NewWordOrder {
     RANDOM,
 
     /**
-     * 按难度混合。难度按重要度三等分：重要度最高的三分之一算「易」，最低的三分之一
-     * 算「难」，中间算「中」，按 [SrsSettings.newWordMix] 的比例交错抽取。
+     * 按难度混合。难度按 COCA 排名三等分：排名最靠前（最常用）的三分之一算「易」，
+     * 最后三分之一（含无排名的）算「难」，中间算「中」，按 [SrsSettings.newWordMix]
+     * 的比例交错抽取。
      */
     MIXED,
 
@@ -59,7 +60,7 @@ data class SrsSettings(
     /**
      * 「按词表比例」参与抽取的词表 id，仅 newWordOrder == DECK_WEIGHTED 时生效。
      *
-     * **空列表 = 不限制词表**（退化成「按重要度」），而不是「什么都不抽」——
+     * **空列表 = 不限制词表**（退化成「按词频排名」），而不是「什么都不抽」——
      * 后者会让一个没配完的设置看起来像坏了。
      */
     val weightedDeckIds: List<Long> = emptyList()

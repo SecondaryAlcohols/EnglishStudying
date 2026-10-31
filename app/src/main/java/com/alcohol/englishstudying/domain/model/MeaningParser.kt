@@ -18,11 +18,30 @@ object MeaningParser {
     /** 一条释义：解析出的词性（已规范化，如 `n.` / `形容词`）+ 去掉词性后的正文。 */
     data class MeaningWithPos(val pos: String?, val text: String)
 
-    /** 英文词性缩写。长词放前面，避免 `adj.` 被 `adv.` 之前的 `a` 之类截胡。 */
+    /**
+     * 英文词性缩写。
+     *
+     * 长词放前面，避免 `adj.` 被 `adv.` 之前的 `a` 之类截胡。
+     * 这份清单是照**库里实际出现的写法**列的（2026-10-26 全库统计：`n` 5140、`v` 4479、
+     * `a` 1442、`ad` 335、`prep` 77、`pron` 72、`adj` 50、`vt` 46、`conj` 41、`num` 30、
+     * `vi` 28、`adv` 17、`aux` 11、`interj` 6、`int` 5、`art` 2、`abbr` 1、`pref` 1）。
+     * 漏掉 `ad`/`int` 时它们不会进绿色词性框，而是原样混在释义正文里。
+     */
     private val EN = Regex(
-        pattern = """^\s*(interj|conj|pron|prep|adv|adj|aux|art|vi|vt|num|pl|phr|phrase|n|v|a)\s*[.．]""",
+        pattern = """^\s*(interj|phrase|abbr|conj|pron|prep|adv|adj|aux|art|int|pref|suff|vi|vt|num|pl|phr|n|v|ad|a)\s*[.．]""",
         options = setOf(RegexOption.IGNORE_CASE)
     )
+
+    /**
+     * 短写的规范名。
+     *
+     * ECDICT 同一个词性有两种写法（`a.` 1442 条 vs `adj.` 50 条、`ad.` 335 条 vs `adv.` 17 条），
+     * 照原样渲染会让同一张卡上出现 `adj.` 和 `a.` 两种绿框，看着像两个不同的词性。
+     */
+    private val POS_ALIAS = mapOf("a" to "adj", "ad" to "adv", "int" to "interj")
+
+    /** `aux.v.` 是词典里的固定连写，别把 `v.` 留在正文里。 */
+    private val AUX_V = Regex("""^v\s*[.．]\s*""", setOf(RegexOption.IGNORE_CASE))
 
     /**
      * 中文词性。**后面必须跟分隔符或到行尾**，这一点不能省。
@@ -45,8 +64,17 @@ object MeaningParser {
     fun parse(raw: String): MeaningWithPos {
         val en = EN.find(raw)
         if (en != null) {
-            val rest = raw.substring(en.range.last + 1)
-            return MeaningWithPos(en.groupValues[1].lowercase() + ".", clean(rest))
+            val code = en.groupValues[1].lowercase()
+            var rest = raw.substring(en.range.last + 1)
+            // aux.v.：两个缩写连写，整段算一个词性，剩下的才是正文
+            if (code == "aux") {
+                val auxV = AUX_V.find(rest)
+                if (auxV != null) {
+                    rest = rest.substring(auxV.range.last + 1)
+                    return MeaningWithPos("aux.v.", clean(rest))
+                }
+            }
+            return MeaningWithPos((POS_ALIAS[code] ?: code) + ".", clean(rest))
         }
         val zh = ZH.find(raw)
         if (zh != null) {
@@ -54,6 +82,25 @@ object MeaningParser {
             return MeaningWithPos(zh.groupValues[1], clean(rest))
         }
         return MeaningWithPos(null, raw.trim())
+    }
+
+    /**
+     * 把词条 `part_of_speech` 列的原始写法规范成卡片上显示的词性。
+     *
+     * 这一列**直接来自 ECDICT**，同样是短写混着长写（`a.` 776 个、`ad.` 122 个、`adj.` 338 个），
+     * 不归一化的话，卡片首条释义的绿框会和下面几条不是一个写法。
+     * 复合写法（`vt. / vi.`、`n. / v.`）按 `/` 拆开逐个归一化。
+     */
+    fun normalizePos(raw: String?): String? {
+        val text = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        return text.split("/")
+            .joinToString(" / ") { part ->
+                val trimmed = part.trim()
+                val m = EN.find(trimmed) ?: return@joinToString trimmed
+                val code = m.groupValues[1].lowercase()
+                val tail = trimmed.substring(m.range.last + 1).trim()
+                (POS_ALIAS[code] ?: code) + "." + tail
+            }
     }
 
     /** 一列释义逐条解析。空行与纯空白条目丢弃。 */

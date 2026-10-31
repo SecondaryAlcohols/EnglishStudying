@@ -25,7 +25,9 @@ import kotlinx.coroutines.launch
 data class LibraryFilters(
     val query: String = "",
     val deckId: Long? = null,
-    val stateFilter: CardState? = null
+    val stateFilter: CardState? = null,
+    /** 只看「优先学」；和状态/词表筛选叠加时取交集。 */
+    val priorityOnly: Boolean = false
 )
 
 data class LibraryUiState(
@@ -50,7 +52,7 @@ class LibraryViewModel(
 
     val state: StateFlow<LibraryUiState> = combine(
         filters.flatMapLatest { f ->
-            wordRepository.observeList(f.query, f.deckId, f.stateFilter)
+            wordRepository.observeList(f.query, f.deckId, f.stateFilter, f.priorityOnly)
         },
         filters,
         deckRepository.observeAll(),
@@ -71,6 +73,8 @@ class LibraryViewModel(
     fun setStateFilter(value: CardState?) = filters.update { it.copy(stateFilter = value) }
 
     fun setDeckFilter(value: Long?) = filters.update { it.copy(deckId = value) }
+
+    fun setPriorityOnly(value: Boolean) = filters.update { it.copy(priorityOnly = value) }
 
     fun clearFilters() = filters.update { LibraryFilters() }
 

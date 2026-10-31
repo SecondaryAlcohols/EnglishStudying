@@ -51,7 +51,7 @@ import com.alcohol.englishstudying.domain.srs.NewWordOrder
 import com.alcohol.englishstudying.ui.components.SectionHeader
 
 private val ORDER_LABELS = listOf(
-    NewWordOrder.FREQUENCY to "按重要度",
+    NewWordOrder.FREQUENCY to "按词频排名",
     NewWordOrder.SEQUENCE to "按入库顺序",
     NewWordOrder.RANDOM to "随机",
     NewWordOrder.MIXED to "按难度混合",
@@ -142,7 +142,8 @@ fun SettingsScreen(
                     supportingContent = {
                         Text(
                             "开启后，队列里互为变形的词（如 answer / answers / answered）" +
-                                "会连续出现，其余顺序尽量保持不变。改完下次进入学习时生效。"
+                                "会连续出现，其余顺序尽量保持不变。只在「已学过的卡」和「新词」" +
+                                "各自内部连排，新词不会被提前拉进复习里。改完下次进入学习时生效。"
                         )
                     },
                     trailingContent = {

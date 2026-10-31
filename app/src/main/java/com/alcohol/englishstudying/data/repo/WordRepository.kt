@@ -14,8 +14,10 @@ class WordRepository(
     fun observeList(
         query: String = "",
         deckId: Long? = null,
-        stateFilter: CardState? = null
-    ): Flow<List<WordListRow>> = db.wordDao().observeList(query.trim(), deckId, stateFilter)
+        stateFilter: CardState? = null,
+        priorityOnly: Boolean = false
+    ): Flow<List<WordListRow>> =
+        db.wordDao().observeList(query.trim(), deckId, stateFilter, priorityOnly)
 
     fun observeCount(deckId: Long? = null): Flow<Int> = db.wordDao().observeCount(deckId)
 
@@ -54,9 +56,30 @@ class WordRepository(
         return if (word.id == 0L) {
             db.wordDao().insert(word.copy(createdAt = timestamp, updatedAt = timestamp))
         } else {
-            db.wordDao().update(word.copy(updatedAt = timestamp))
+            // 编辑页的表单里没有 priority，它构造出来的 WordEntity 会带默认值 false。
+            // 更新时沿用库里的值 —— 否则「只改一个音标」也会把优先学悄悄取消。
+            val existing = db.wordDao().getById(word.id)
+            db.wordDao().update(
+                word.copy(
+                    priority = existing?.priority ?: word.priority,
+                    updatedAt = timestamp
+                )
+            )
             word.id
         }
+    }
+
+    /** 「优先学」开关；只对还没学过的词有意义，调用方负责判断。 */
+    suspend fun setPriority(id: Long, priority: Boolean) {
+        db.wordDao().setPriority(id, priority, now())
+    }
+
+    /** 被抽走之后清掉优先标记。抽词在 [com.alcohol.englishstudying.data.repo.StudyRepository] 里做。 */
+    suspend fun clearPriority(ids: Collection<Long>) {
+        if (ids.isEmpty()) return
+        ids.toList()
+            .chunked(AppDatabase.SQLITE_BIND_LIMIT)
+            .forEach { db.wordDao().clearPriority(it) }
     }
 
     suspend fun delete(id: Long) = db.wordDao().deleteById(id)

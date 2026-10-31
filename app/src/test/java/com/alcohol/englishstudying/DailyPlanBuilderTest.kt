@@ -145,4 +145,73 @@ class DailyPlanBuilderTest {
         assertTrue(now >= DailyPlanBuilder.startOfDayMinutes(epochDay))
         assertTrue(now < DailyPlanBuilder.startOfDayMinutes(epochDay + 1))
     }
+
+    // ---- 回队位置：新词排末尾 ----
+
+    private fun isNew(value: String) = value.startsWith("new")
+
+    @Test
+    fun `新词再考排到队尾`() {
+        val remaining = listOf("new2", "new3", "new4")
+
+        val index = DailyPlanBuilder.requeueIndex(remaining, wasNew = true, isNew = ::isNew)
+
+        assertEquals(remaining.size, index)
+    }
+
+    @Test
+    fun `复习卡再考插到第一个新词之前`() {
+        val remaining = listOf("r1", "new2", "new3")
+
+        val index = DailyPlanBuilder.requeueIndex(remaining, wasNew = false, isNew = ::isNew)
+
+        assertEquals(1, index)
+    }
+
+    @Test
+    fun `队列里没有新词时回队尾`() {
+        val remaining = listOf("r1", "r2")
+
+        val index = DailyPlanBuilder.requeueIndex(remaining, wasNew = false, isNew = ::isNew)
+
+        assertEquals(2, index)
+    }
+
+    @Test
+    fun `空队列也能算出插入位置`() {
+        assertEquals(
+            0,
+            DailyPlanBuilder.requeueIndex(emptyList<String>(), wasNew = true, isNew = ::isNew)
+        )
+    }
+
+    // ---- 今天模糊过的卡并回复习流 ----
+
+    @Test
+    fun `模糊过的卡排在最前`() {
+        val owed = listOf("lot", "revenue")
+        val due = listOf("hurt", "immune")
+
+        val merged = DailyPlanBuilder.mergeOwed(owed, due, keyOf = { it.first().code.toLong() })
+
+        assertEquals(listOf("lot", "revenue", "hurt", "immune"), merged)
+    }
+
+    @Test
+    fun `模糊卡同时到期时不重复`() {
+        // 一张卡点了模糊之后若 dueAtMinutes 仍落在今天，两条查询都会捞到它
+        val owed = listOf("lot")
+        val due = listOf("lot", "hurt")
+
+        val merged = DailyPlanBuilder.mergeOwed(owed, due, keyOf = { it.first().code.toLong() })
+
+        assertEquals(listOf("lot", "hurt"), merged)
+    }
+
+    @Test
+    fun `没有模糊卡时原样返回`() {
+        val due = listOf("hurt")
+
+        assertEquals(due, DailyPlanBuilder.mergeOwed(emptyList(), due, keyOf = { it.first().code.toLong() }))
+    }
 }

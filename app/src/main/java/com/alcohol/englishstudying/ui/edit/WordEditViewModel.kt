@@ -264,7 +264,7 @@ class WordEditViewModel(
  *
  * 对应 `RelationBuilder.build` 实际读的四个输入：`headword` 定变形、`roots` 定同根、
  * `derivations` 定变形（从文本里提到的词）、`synonyms` 定近义。其余列（音标、释义、
- * 巧记、例句、标签、重要度）改了不影响任何一条关系，不该为此重算全库。
+ * 巧记、例句、标签、词频排名）改了不影响任何一条关系，不该为此重算全库。
  *
  * 比的是 trim 之后的值 —— 落库时 `WordDraft.toEntity` 会 trim，只差个首尾空格不算改动。
  *

@@ -40,12 +40,55 @@ data class DailyProgress(
     val reviewTableCount: Int = 0,
     val todayDueReviewCount: Int = 0,
     /**
-     * 今天「开始学」的词数（初学）：今天新学的 ∪ 今天开始重学的。
+     * 今天复习完成的**旧词**数（今天有作答、且首次作答不在今天）。
+     *
+     * 含今天在复习卡上点了「太简单 / 太难」移出学习的旧词 —— 那也是过了一遍卡、对记忆质量
+     * 下过判断，只是结论是「别再考了」。但不含今天新学又被移出的词，它们算「初学」。
+     *
+     * 是**查出来的**，不是 `answeredToday - learnedToday`：那两个口径不是包含关系 ——
+     * `learnedToday` 含「没作答就被标移出」的词（它们不写日志），减出来会把复习数多扣掉。
+     * 详见 `ReviewDao.observeReviewDoneCount` 里记的那笔账。
+     */
+    val reviewDoneToday: Int = 0,
+    /**
+     * 今天已经「过过一遍」的旧卡数（任意评分，含移出学习）—— 已用的复习额度。
+     *
+     * 和 [reviewDoneToday] 只差一个评分过滤：忘记/模糊也算过卡，只是还没完成。
+     * 每日复习上限数的是「发出去多少张复习卡」，不是「完成多少张」。
+     */
+    val reviewAttemptedToday: Int = 0,
+    /** 今日复习上限还剩多少张；0 表示今天不再发复习卡（学习步里的卡不受影响）。 */
+    val reviewBudgetRemaining: Int = 0,
+    /**
+     * 今日复习的目标数，已经把每日复习上限算进去：
+     * `min(今天应复习总数, max(已完成, 已过卡) + 剩余额度)`。
+     *
+     * 上限用完后它就等于 max(已完成, 已过卡)，界面显示 X/X，不再拿全天到期数
+     * （比如 326）画一个今天根本走不到的目标。
+     */
+    val reviewTargetToday: Int = 0,
+    /**
+     * 今天「开始学」的词数（初学）：今天新学的 ∪ 今天忘了又重新学起来的。
+     *
+     * 后一半**要等重新答对才算**：复习卡上点「忘记」只是掉进重学，那一刻不动初学，
+     * 只让 `relearnPending` 的 +N 涨 1。等这张卡学回 `REVIEW` 之后才算学完（掌握）。
      * 恒有 [masteredToday] <= [startedToday]。
      */
     val startedToday: Int = 0,
-    /** 上面那些里今天已经学完的（掌握），含今天重学完的。 */
+    /**
+     * 上面那些里今天已经学完的（掌握），含今天重学回 `REVIEW` 的、也含今天标为「太简单」的新词 ——
+     * 一眼就会的词本来就不必再学，它和「学了并答对」一样算学完。
+     */
     val masteredToday: Int = 0,
+    /**
+     * 今天标为「太难」的**新词**数。它们不进初学也不进掌握，而是**直接从当天的上限里扣掉**
+     * 这么多个名额：上限 20、扣掉 2 个就显示成 18。
+     *
+     * 界面靠它把「初学 1 / 掌握 1 / 上限 18」凑成一组自洽的数 —— 放弃的词既不装作学过，
+     * 也不占着名额让用户找不到「为什么还剩 17 个却说今天已满」。
+     * 口径见 `ReviewDao.observeTooHardNewCount`。
+     */
+    val tooHardNewToday: Int = 0,
     /**
      * 界面上 `上限 50+N` 里的那个 N = **上次复习结束冻结的积压 + 这次会话已经忘了几个**。
      *
@@ -62,8 +105,6 @@ data class DailyProgress(
     val currentNowMinutes: Long = 0L,
     val learningCount: Int = 0
 ) {
-    val reviewDoneToday: Int get() = (answeredToday - learnedToday).coerceAtLeast(0)
-
     val coolingWaitMinutes: Int get() {
         val earliest = earliestCoolingDueMinutes ?: return 0
         return (earliest - currentNowMinutes).coerceAtLeast(1L).toInt()
@@ -100,6 +141,7 @@ class StudyRepository(
      * 否则新词会被到期查询当成「到期卡」捞出来，每日限额就形同虚设。
      *
      * [groupRelated] 开启时，队列里互为变形的词（同一组变形关系）会被稳定重排到一起，
+     * 但**只在同类卡内部**——新词不会被已学卡的同形词拉到复习流中间（见 [groupFormChains]），
      * 见 [com.alcohol.englishstudying.domain.relations.ChainGrouper]。
      */
     suspend fun buildSession(
@@ -112,11 +154,32 @@ class StudyRepository(
         val nowMinutes = nowMinutes(todayEpochDay)
         val deckId = settings.studyDeckId
 
+        // 每日复习上限是「今天最多发多少张复习卡」，按已经过过一遍的旧卡数扣。
+        // 不用 `dailyReviewLimit` 直接当 LIMIT —— 那是每次 buildSession 都重新给 200，
+        // 用户开几个会话就能无限续杯。
+        val dayStartMillis = todayStartMillis()
+        val reviewAttempted = db.reviewDao().reviewAttemptedCount(
+            dayStartMillis,
+            dayStartMillis + MILLIS_PER_DAY,
+            deckId
+        )
+        val reviewBudget = (settings.dailyReviewLimit - reviewAttempted).coerceAtLeast(0)
+
         // 复习卡与学习卡各拿一份独立限额，两条查询分开跑。共用一条查询、一个 LIMIT 时，
         // 逾期复习卡撞满上限会把当天已经到期的学习卡整段截掉（排序恒定复习在前），
         // 而那些词已有 review_states 行、不再算新词，两条路都进不去。
-        val reviewCards = toCards(
-            db.reviewDao().dueReviewStates(nowMinutes, deckId, settings.dailyReviewLimit)
+        // 复习卡吃的是「每日上限剩余额度」；学习卡是已经在途的卡，仍按 settings.dailyReviewLimit 取。
+        //
+        // 「今天模糊过、还没再答对」的旧卡单独捞一次并排在最前：它们的排期在第一次模糊时
+        // 就定死到了未来，到期查询捞不到，会话一断就会当天消失（见 mergeOwed 的说明）。
+        // 它们已经被算进过卡数，不再消耗上限额度，所以不受 reviewBudget 约束。
+        val owedCards = toCards(
+            db.reviewDao().hazilyReviewedToday(dayStartMillis, dayStartMillis + MILLIS_PER_DAY, deckId)
+        )
+        val reviewCards = DailyPlanBuilder.mergeOwed(
+            owedCards,
+            toCards(db.reviewDao().dueReviewStates(nowMinutes, deckId, reviewBudget)),
+            keyOf = { it.word.id }
         )
         val learningCards = toCards(
             if (includeCooling) {
@@ -136,46 +199,72 @@ class StudyRepository(
             (settings.dailyNewLimit - learnedToday).coerceAtLeast(0)
         }
 
-        val newWords = if (newLimit <= 0) {
+        // 「优先学」先抽：它压过用户选的所有顺序（包括按难度混合、按词表比例）。
+        // 抽走的词当场清标记，下一次抽新词就不会再优先它们。
+        val priorityWords = if (newLimit <= 0) {
+            emptyList()
+        } else {
+            db.wordDao().priorityNewWords(newLimit, deckId)
+        }
+        val priorityIds = priorityWords.mapTo(HashSet()) { it.id }
+        val normalLimit = (newLimit - priorityWords.size).coerceAtLeast(0)
+
+        val normalWords = if (normalLimit <= 0) {
             emptyList()
         } else {
             when (settings.newWordOrder) {
+                // 正常池按 newLimit 查（不是 normalLimit）：优先词可能就排在这批里，
+                // 滤掉它们之后仍然剩得下 normalLimit 个，不会少抽。
                 NewWordOrder.FREQUENCY -> db.wordDao().newWordsByFrequency(newLimit, deckId)
+                    .filterNot { it.id in priorityIds }
+                    .take(normalLimit)
+
                 NewWordOrder.SEQUENCE -> db.wordDao().newWordsBySequence(newLimit, deckId)
+                    .filterNot { it.id in priorityIds }
+                    .take(normalLimit)
+
                 NewWordOrder.RANDOM -> db.wordDao().newWordsByRandom(newLimit, deckId)
+                    .filterNot { it.id in priorityIds }
+                    .take(normalLimit)
+
                 NewWordOrder.MIXED -> {
                     // 池子必须是范围内「全部」未学词：mixer 按位置三等分出易/中/难，
-                    // 只喂头部一小段（重要度最高的几十个）时三档全是易词，
-                    // 用户配的「难」名额实际上拿不到真正低重要度的词，混合名存实亡。
-                    // 这里只拉 id+重要度的轻量行，选完再按 id 取完整词条。
+                    // 只喂头部一小段（排名最靠前的几十个）时三档全是易词，
+                    // 用户配的「难」名额实际上拿不到真正生僻的词，混合名存实亡。
+                    // 这里只拉 id+排名的轻量行，选完再按 id 取完整词条。
                     val pool = db.wordDao().unlearnedFrequencies(deckId)
-                    val picked = NewWordMixer.mix(pool, newLimit, settings.newWordMix)
+                        .filterNot { it.id in priorityIds }
+                    val picked = NewWordMixer.mix(pool, normalLimit, settings.newWordMix)
                     wordsInOrder(picked.map { it.id })
                 }
 
                 NewWordOrder.DECK_WEIGHTED -> {
                     val deckIds = settings.weightedDeckIds
                     if (deckIds.isEmpty()) {
-                        // 一个词表都没选 = 不限制词表，等价于「按重要度」
+                        // 一个词表都没选 = 不限制词表，等价于「按词频排名」
                         // （见 SrsSettings.weightedDeckIds 的说明）
                         db.wordDao().newWordsByFrequency(newLimit, deckId)
+                            .filterNot { it.id in priorityIds }
+                            .take(normalLimit)
                     } else {
-                        // 每个选中的词表各拉一份「全部」未学词（轻量的 id+重要度行）——
+                        // 每个选中的词表各拉一份「全部」未学词（轻量的 id+排名行）——
                         // 权重就是各自的词数，只喂头部一小段会让权重变成那个截断值。
                         // 一个词可能同时属于多个词表，用 seen 去重、先到先得；
                         // 桶的顺序由 deckIds 决定，所以同样的配置每次给出的队列一致。
                         val seen = HashSet<Long>()
                         val buckets = deckIds.mapNotNull { id ->
                             db.wordDao().unlearnedFrequencies(id)
+                                .filterNot { it.id in priorityIds }
                                 .filter { seen.add(it.id) }
                                 .takeIf { it.isNotEmpty() }
                         }
-                        val picked = NewWordMixer.mixByDeckSizes(buckets, newLimit)
+                        val picked = NewWordMixer.mixByDeckSizes(buckets, normalLimit)
                         wordsInOrder(picked.map { it.id })
                     }
                 }
             }
         }
+        val newWords = priorityWords + normalWords
         val newCards = newWords.map {
             StudyCard(it, SrsState.newCard(todayEpochDay, settings.startingEase))
         }
@@ -186,7 +275,14 @@ class StudyRepository(
             settings
         }
         val queue = DailyPlanBuilder.build(reviewCards, learningCards, newCards, planSettings)
-        return if (groupRelated) groupFormChains(queue) else queue
+        val result = if (groupRelated) groupFormChains(queue) else queue
+        if (priorityWords.isNotEmpty()) {
+            // 抽走即出「优先学」。放在建队之后：万一上面哪一步抛了，标记还留着。
+            priorityWords.map { it.id }
+                .chunked(AppDatabase.SQLITE_BIND_LIMIT)
+                .forEach { db.wordDao().clearPriority(it) }
+        }
+        return result
     }
 
     /**
@@ -261,7 +357,16 @@ class StudyRepository(
         }
     }
 
-    /** 同一组变形的词排到一起；关系只看已经进队列的词，没进队列的成员不参与。 */
+    /**
+     * 同一组变形的词排到一起；关系只看已经进队列的词，没进队列的成员不参与。
+     *
+     * 连排**只在同类卡内部**生效（[ChainGrouper.groupBySection]），新词绝不参与已学卡的
+     * 连排：建队顺序是「复习卡 → 学习卡 → 新词」，而连排是按「组内第一个成员的位置」
+     * 整组搬运的 —— 不分段时，队尾的新词会被复习卡里的同形词拉进复习流中间。
+     * 2026-10-26 真机实测：`knows` 标完「太简单」，下一张就是新词 `know`；`leaves` 之后
+     * 紧跟 `leave`。复习只走了 15 张就先学了 2 个新词，首页「初学 / 掌握」提前跳数，
+     * 看着像复习没走完就进了学习。
+     */
     private suspend fun groupFormChains(queue: List<StudyCard>): List<StudyCard> {
         if (queue.size < 2) return queue
         // 过滤放在内存里做，不用 SQL 的两个 IN —— 理由见 WordRelationDao.pairsOfType
@@ -269,7 +374,13 @@ class StudyRepository(
         val pairs = db.relationDao().pairsOfType(WordRelationType.FORM)
             .filter { it.fromWordId in ids && it.toWordId in ids }
             .map { it.fromWordId to it.toWordId }
-        return ChainGrouper.group(queue, keyOf = { it.word.id }, pairs = pairs)
+        return ChainGrouper.groupBySection(
+            queue,
+            keyOf = { it.word.id },
+            pairs = pairs,
+            // 0 = 已有 review_states 的卡（REVIEW / LEARNING / RELEARNING），1 = 新词
+            sectionOf = { if (it.state.state == CardState.NEW) 1 else 0 }
+        )
     }
 
     /** 评分并落库。返回评分后的新状态，供界面直接展示「下次复习」。 */
@@ -314,6 +425,8 @@ class StudyRepository(
      *
      * 记忆状态原样保留，只是状态位换掉 —— 词库里「移出」名单后能接着原进度继续。
      * 不写 review_logs：这不是一次作答，统计页的答题数不该被它污染。
+     * 但它**仍算一次「今日复习」**（旧词的话）：靠 [lastReviewedAt] 落回今天来认，
+     * 见 `ReviewDao.observeReviewDoneCount` 第 2 条来源 —— 卡确实过了用户的眼睛。
      */
     suspend fun exclude(card: StudyCard, target: CardState): SrsState {
         require(target == CardState.TOO_EASY || target == CardState.TOO_HARD)
@@ -484,11 +597,17 @@ class StudyRepository(
         val intermediate = combine(
             baseProgress,
             db.reviewDao().observeReviewCount(deckId),
-            db.reviewDao().observeTodayDueReviewCount(startMillis, endMillis, endOfDayMinutes, deckId)
-        ) { p, reviewTableCount, todayDueReviewCount ->
+            db.reviewDao().observeTodayDueReviewCount(startMillis, endMillis, endOfDayMinutes, deckId),
+            // 「今日复习」的分子必须查，不能拿 answeredToday - learnedToday 去减（见字段说明）
+            db.reviewDao().observeReviewDoneCount(startMillis, endMillis, deckId),
+            // 今天标「太难」的新词：从当天新词上限里扣掉的名额
+            db.reviewDao().observeTooHardNewCount(startMillis, endMillis, deckId)
+        ) { p, reviewTableCount, todayDueReviewCount, reviewDoneToday, tooHardNew ->
             p.copy(
                 reviewTableCount = reviewTableCount,
-                todayDueReviewCount = todayDueReviewCount
+                todayDueReviewCount = todayDueReviewCount,
+                reviewDoneToday = reviewDoneToday,
+                tooHardNewToday = tooHardNew
             )
         }
 
@@ -511,13 +630,24 @@ class StudyRepository(
             intermediate2,
             db.reviewDao().observeCoolingCount(nowMinutes, deckId),
             db.reviewDao().observeEarliestCoolingDueMinutes(nowMinutes, deckId),
-            db.reviewDao().observeLearningCount(deckId)
-        ) { p, coolingCount, earliestDue, learningCount ->
+            db.reviewDao().observeLearningCount(deckId),
+            db.reviewDao().observeReviewAttemptedCount(startMillis, endMillis, deckId)
+        ) { p, coolingCount, earliestDue, learningCount, attempted ->
+            // 每日复习上限按「已经过过多少张旧卡」扣，不是按「完成多少张」：
+            // 忘记/模糊也算过卡。额度用完后 buildSession 不再发复习卡。
+            val remaining = (settings.dailyReviewLimit - attempted).coerceAtLeast(0)
+            val target = minOf(
+                p.todayDueReviewCount,
+                maxOf(p.reviewDoneToday, attempted) + remaining
+            )
             p.copy(
                 coolingCount = coolingCount,
                 earliestCoolingDueMinutes = earliestDue,
                 currentNowMinutes = nowMinutes,
-                learningCount = learningCount
+                learningCount = learningCount,
+                reviewAttemptedToday = attempted,
+                reviewBudgetRemaining = remaining,
+                reviewTargetToday = target
             )
         }
     }
@@ -530,9 +660,13 @@ class StudyRepository(
     }
 
     /**
-     * 单纯复习记录作答日志（仅记录耗时、评分与时刻，绝不修改 review_states 中的任何 SRS 调度属性）。
+     * 只记一行作答日志，不动排期（不碰 review_states）。
+     *
+     * 两处会用到：单纯复习（本来就不改任何 SRS 属性）、以及复习循环里「排期已按第一次
+     * 模糊定死」之后的作答 —— 重考也是作答，答题次数与用时得留下，但日期不许再变。
+     * [currentIntervalDays] 记的是当前那个已经定死的间隔，不是这次评分会算出的间隔。
      */
-    suspend fun logPracticeReview(
+    suspend fun logAnswer(
         wordId: Long,
         rating: Rating,
         elapsedMs: Long,
@@ -572,6 +706,20 @@ class StudyRepository(
     suspend fun learnedTodayCount(deckId: Long? = null): Int {
         val startMillis = todayStartMillis()
         return db.reviewDao().learnedCount(startMillis, startMillis + MILLIS_PER_DAY, deckId)
+    }
+
+    /**
+     * 今天点过模糊、还没再答对的旧词 —— 它们虽然排到了未来，今天的复习循环还没走完。
+     *
+     * 会话开始时拿它给 `StudyViewModel.lockedWordIds` 播种：这些卡的排期在第一次模糊时
+     * 就定死了，重新进入会话后再点「认识」只能写日志、不能改日期，否则「排期按模糊算」
+     * 这条规则会在退出应用之后失效。
+     */
+    suspend fun hazyWordIdsToday(deckId: Long? = null): Set<Long> {
+        val startMillis = todayStartMillis()
+        return db.reviewDao()
+            .hazilyReviewedToday(startMillis, startMillis + MILLIS_PER_DAY, deckId)
+            .mapTo(HashSet()) { it.wordId }
     }
 
     /** 挂起的卡不在每日队列里，只能在词库里手动恢复。 */
