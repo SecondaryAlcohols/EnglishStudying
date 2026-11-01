@@ -8,6 +8,7 @@ import com.alcohol.englishstudying.data.prefs.SettingsRepository
 import com.alcohol.englishstudying.data.repo.DeckRepository
 import com.alcohol.englishstudying.data.repo.RelationRepository
 import com.alcohol.englishstudying.data.repo.StudyRepository
+import com.alcohol.englishstudying.data.repo.UserTagRepository
 import com.alcohol.englishstudying.data.repo.WordRepository
 
 /**
@@ -27,6 +28,7 @@ class AppContainer(context: Context) {
     val decks: DeckRepository by lazy { DeckRepository(database) }
     val study: StudyRepository by lazy { StudyRepository(database, settings) }
     val relations: RelationRepository by lazy { RelationRepository(database) }
+    val userTags: UserTagRepository by lazy { UserTagRepository(database) }
     val importer: WordImporter by lazy { WordImporter(database) }
     val fileReader: WordFileReader by lazy { WordFileReader(appContext) }
 }

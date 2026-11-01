@@ -1,22 +1,21 @@
 package com.alcohol.englishstudying.ui.library
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
@@ -26,28 +25,25 @@ import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -55,23 +51,34 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.alcohol.englishstudying.data.local.DeckWithCount
 import com.alcohol.englishstudying.data.local.WordListRow
 import com.alcohol.englishstudying.di.AppContainer
-import com.alcohol.englishstudying.domain.srs.ReviewSchedule
+import com.alcohol.englishstudying.domain.model.MeaningParser
 import com.alcohol.englishstudying.domain.srs.CardState
+import com.alcohol.englishstudying.domain.srs.ReviewSchedule
 import com.alcohol.englishstudying.ui.components.EmptyState
 import com.alcohol.englishstudying.ui.components.StateBadge
+import com.alcohol.englishstudying.ui.components.UserTagChip
 
 private val STATE_FILTERS = listOf(
     null to "全部",
-    CardState.NEW to "新词",
+    CardState.NEW to "未学",
     CardState.LEARNING to "学习中",
     CardState.RELEARNING to "重学中",
-    CardState.REVIEW to "复习中",
+    CardState.REVIEW to "已掌握",
     CardState.TOO_EASY to "太简单",
     CardState.TOO_HARD to "太难",
     CardState.SUSPENDED to "已挂起"
 )
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+/**
+ * 词库。
+ *
+ * 版面自上而下：搜索 → 词表 → 学习状态 → 我的标签 → 列表。
+ *
+ * 两套标签在这里第一次分开：列表行下面那些彩色小块是**用户标签**（易混/写作/听力错…），
+ * 系统标签（L0/L1、真题高频、考研…）只在词条详情里出现 —— 一页几十行、每行五六个灰标签，
+ * 谁都看不清哪个是自己打的。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
     container: AppContainer,
@@ -80,6 +87,7 @@ fun LibraryScreen(
     onOpenImport: () -> Unit,
     onOpenDecks: () -> Unit,
     onOpenStats: () -> Unit,
+    onOpenTags: () -> Unit,
     viewModel: LibraryViewModel = viewModel(factory = LibraryViewModel.factory(container))
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -125,15 +133,13 @@ fun LibraryScreen(
 
                 else -> {
                     SearchAndFilters(
-                        query = state.filters.query,
+                        state = state,
                         onQueryChange = viewModel::setQuery,
-                        stateFilter = state.filters.stateFilter,
                         onStateFilterChange = viewModel::setStateFilter,
-                        deckId = state.filters.deckId,
-                        decks = state.decks,
                         onDeckChange = viewModel::setDeckFilter,
-                        priorityOnly = state.filters.priorityOnly,
-                        onPriorityChange = viewModel::setPriorityOnly
+                        onPriorityChange = viewModel::setPriorityOnly,
+                        onToggleTag = viewModel::toggleTag,
+                        onOpenTags = onOpenTags
                     )
 
                     Text(
@@ -159,23 +165,21 @@ fun LibraryScreen(
                             contentPadding = PaddingValues(bottom = 88.dp)
                         ) {
                             items(state.rows, key = { it.word.id }) { row ->
-                                Column {
-                                    WordRow(
-                                        row = row,
-                                        onClick = { onOpenWord(row.word.id) },
-                                        // 太简单/太难名单里的词：行内直接移出恢复学习
-                                        onResume = if (row.state == CardState.TOO_EASY ||
-                                            row.state == CardState.TOO_HARD
-                                        ) {
-                                            { viewModel.resumeExcluded(row.word.id) }
-                                        } else {
-                                            null
-                                        }
-                                    )
-                                    HorizontalDivider(
-                                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                                    )
-                                }
+                                WordRow(
+                                    row = row,
+                                    onClick = { onOpenWord(row.word.id) },
+                                    // 太简单/太难名单里的词：行内直接移出恢复学习
+                                    onResume = if (row.state == CardState.TOO_EASY ||
+                                        row.state == CardState.TOO_HARD
+                                    ) {
+                                        { viewModel.resumeExcluded(row.word.id) }
+                                    } else {
+                                        null
+                                    }
+                                )
+                                HorizontalDivider(
+                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                                )
                             }
                         }
                     }
@@ -185,29 +189,30 @@ fun LibraryScreen(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SearchAndFilters(
-    query: String,
+    state: LibraryUiState,
     onQueryChange: (String) -> Unit,
-    stateFilter: CardState?,
     onStateFilterChange: (CardState?) -> Unit,
-    deckId: Long?,
-    decks: List<DeckWithCount>,
     onDeckChange: (Long?) -> Unit,
-    priorityOnly: Boolean,
-    onPriorityChange: (Boolean) -> Unit
+    onPriorityChange: (Boolean) -> Unit,
+    onToggleTag: (Long) -> Unit,
+    onOpenTags: () -> Unit
 ) {
-    Column(Modifier.padding(horizontal = 16.dp)) {
+    val filters = state.filters
+    Column {
         OutlinedTextField(
-            value = query,
+            value = filters.query,
             onValueChange = onQueryChange,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
             singleLine = true,
+            shape = RoundedCornerShape(14.dp),
             placeholder = { Text("搜单词、释义、巧记、词根") },
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
             trailingIcon = {
-                if (query.isNotEmpty()) {
+                if (filters.query.isNotEmpty()) {
                     IconButton(onClick = { onQueryChange("") }) {
                         Icon(Icons.Filled.Close, contentDescription = "清空")
                     }
@@ -215,68 +220,112 @@ private fun SearchAndFilters(
             }
         )
 
-        Spacer(Modifier.height(8.dp))
-
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            STATE_FILTERS.forEach { (value, label) ->
+        // 词表：横向滚动，一行放得下常用的几个
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            item {
                 FilterChip(
-                    selected = stateFilter == value,
-                    onClick = { onStateFilterChange(value) },
-                    label = { Text(label) }
+                    selected = filters.deckId == null,
+                    onClick = { onDeckChange(null) },
+                    label = { Text("全部词表") }
                 )
             }
-            // 「优先学」不是学习状态，而是独立的一类；和上面的状态筛选取交集
-            FilterChip(
-                selected = priorityOnly,
-                onClick = { onPriorityChange(!priorityOnly) },
-                label = { Text("优先学") },
-                leadingIcon = if (priorityOnly) {
-                    {
-                        Icon(
-                            Icons.Filled.Star,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
+            items(state.decks, key = { it.id }) { deck ->
+                FilterChip(
+                    selected = filters.deckId == deck.id,
+                    onClick = { onDeckChange(deck.id) },
+                    label = { Text("${deck.name} ${deck.wordCount}", maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                )
+            }
+        }
+
+        // 学习状态 + 优先学：**两行，各自横向滑动**。
+        // 一行塞九个会把后面的词截成半个；两行既能一屏看全多数选项，
+        // 又能左右滑到剩下的。样式保持原来的 FilterChip。
+        val stateRows = listOf(STATE_FILTERS.take(5), STATE_FILTERS.drop(5))
+        stateRows.forEachIndexed { rowIndex, row ->
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(top = if (rowIndex == 0) 0.dp else 2.dp)
+            ) {
+                items(row) { (value, label) ->
+                    FilterChip(
+                        selected = filters.stateFilter == value,
+                        onClick = { onStateFilterChange(value) },
+                        label = { Text(label) }
+                    )
+                }
+                // 「优先学」不是学习状态，单独挂在第二行末尾
+                if (rowIndex == stateRows.lastIndex) {
+                    item {
+                        FilterChip(
+                            selected = filters.priorityOnly,
+                            onClick = { onPriorityChange(!filters.priorityOnly) },
+                            label = { Text("优先学") },
+                            leadingIcon = if (filters.priorityOnly) {
+                                {
+                                    Icon(
+                                        Icons.Filled.Star,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            } else {
+                                null
+                            }
                         )
                     }
-                } else {
-                    null
                 }
-            )
-            DeckFilterChip(
-                label = decks.firstOrNull { it.id == deckId }?.name ?: "全部词表",
-                decks = decks,
-                selectedId = deckId,
-                onSelect = onDeckChange
-            )
+            }
         }
-    }
-}
 
-@Composable
-private fun DeckFilterChip(
-    label: String,
-    decks: List<DeckWithCount>,
-    selectedId: Long?,
-    onSelect: (Long?) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-
-    Box {
-        FilterChip(
-            selected = selectedId != null,
-            onClick = { expanded = true },
-            label = { Text(label) }
-        )
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(
-                text = { Text("全部词表") },
-                onClick = { onSelect(null); expanded = false }
+        // 我的标签：用户自建的那一套，和上面的词表/状态取交集。
+        //
+        // 标签为空时入口文案是「新建」—— 空着也要有条路能建第一个标签，
+        // 否则新装的应用在词库里永远看不到标签区。
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 8.dp, top = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "我的标签",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f)
             )
-            decks.forEach { deck ->
-                DropdownMenuItem(
-                    text = { Text("${deck.name}（${deck.wordCount}）") },
-                    onClick = { onSelect(deck.id); expanded = false }
-                )
+            // 一个标签都没有时也要能进得去：入口文案换成「新建」，
+            // 点进去就是标签管理页，那里有新建输入框。
+            TextButton(onClick = onOpenTags) {
+                Text(if (state.tags.isEmpty()) "新建 ›" else "管理 ›")
+            }
+        }
+        if (state.tags.isEmpty()) {
+            Text(
+                "还没有标签。点右上「新建」建一个，或者到卡片底部给词打标签。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+            )
+        } else {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(state.tags, key = { it.id }) { tag ->
+                    FilterChip(
+                        selected = tag.id in filters.tagIds,
+                        onClick = { onToggleTag(tag.id) },
+                        label = { Text("${tag.name} ${tag.wordCount}") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                }
             }
         }
     }
@@ -288,71 +337,96 @@ private fun WordRow(
     onClick: () -> Unit,
     onResume: (() -> Unit)? = null
 ) {
-    ListItem(
-        modifier = Modifier.clickable(onClick = onClick),
-        headlineContent = {
+    val meaning = row.word.meaningList.firstOrNull()
+    val pos = MeaningParser.normalizePos(row.word.partOfSpeech)
+    val tags = row.userTagList
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(row.word.headword, style = MaterialTheme.typography.titleMedium)
-                row.word.phonetic?.takeIf { it.isNotBlank() }?.let { phonetic ->
+                Text(
+                    row.word.headword,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                if (row.word.priority) {
+                    Spacer(Modifier.width(6.dp))
+                    Icon(
+                        Icons.Filled.Star,
+                        contentDescription = "优先学",
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+                pos?.let {
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        phonetic,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        it,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
-        },
-        supportingContent = {
-            val meaning = row.word.meaningList.firstOrNull()
             if (meaning != null) {
-                Text(meaning, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    meaning,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 3.dp)
+                )
             }
-        },
-        trailingContent = {
-            // 徽章和倒计时整体是**一个**节点（叠在这一列里）。不能让这个 lambda 直接吐
-            // 两个兄弟节点 —— Material3 的 ListItem 对每个槽位只取 `.firstOrNull()` 来测量
-            // 摆放（material3 ListItem.kt 的 trailingPlaceable），第二个会被静默丢弃：
-            // 没有任何报错，那一行就是不出现
-            Column(horizontalAlignment = Alignment.End) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (row.word.priority) {
-                        Icon(
-                            Icons.Filled.Star,
-                            contentDescription = "优先学",
-                            modifier = Modifier.size(14.dp),
-                            tint = MaterialTheme.colorScheme.primary
+            if (tags.isNotEmpty()) {
+                Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // 一行最多露三个，多了会挤掉词义
+                    tags.take(3).forEach { tag -> UserTagChip(tag) }
+                    if (tags.size > 3) {
+                        Text(
+                            "+${tags.size - 3}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Spacer(Modifier.width(4.dp))
-                    }
-                    StateBadge(row.displayState)
-                    if (onResume != null) {
-                        Spacer(Modifier.width(6.dp))
-                        TextButton(onClick = onResume) { Text("移出") }
                     }
                 }
-                // 复习倒计时紧贴在状态徽章下面。只给真正参与调度的几种状态显示 ——
-                // 挂起 / 太简单 / 太难的词留着的是被移出之前那一刻的 dueAtMinutes，
-                // 照着它说「N 天后复习」是假话，徽章本身已经说明了它们的处境
-                row.dueAtMinutes
-                    ?.takeIf {
-                        // 用 displayState：重学中的词显示的是「还压在重学里」，而不是它的
-                        // state 列（那已经变成 LEARNING 了，但语义上仍是重学）
-                        row.displayState == CardState.LEARNING ||
-                            row.displayState == CardState.RELEARNING ||
-                            row.displayState == CardState.REVIEW
-                    }
-                    ?.let { due ->
-                        Text(
-                            ReviewSchedule.label(due),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 2.dp, end = 6.dp)
-                        )
-                    }
             }
         }
-    )
+
+        Column(
+            horizontalAlignment = Alignment.End,
+            modifier = Modifier.padding(start = 8.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                StateBadge(row.displayState)
+                if (onResume != null) {
+                    Spacer(Modifier.width(4.dp))
+                    TextButton(onClick = onResume, contentPadding = PaddingValues(horizontal = 6.dp)) {
+                        Text("移出")
+                    }
+                }
+            }
+            // 只给真正参与调度的状态显示倒计时：挂起 / 太简单 / 太难 留着的是移出前那一刻的
+            // dueAtMinutes，照着它说「N 天后复习」是假话
+            row.dueAtMinutes
+                ?.takeIf {
+                    row.displayState == CardState.LEARNING ||
+                        row.displayState == CardState.RELEARNING ||
+                        row.displayState == CardState.REVIEW
+                }
+                ?.let { due ->
+                    Text(
+                        ReviewSchedule.label(due),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+        }
+    }
 }

@@ -36,6 +36,7 @@ import com.alcohol.englishstudying.ui.library.LibraryScreen
 import com.alcohol.englishstudying.ui.settings.CardFieldSettingsScreen
 import com.alcohol.englishstudying.ui.settings.SettingsScreen
 import com.alcohol.englishstudying.ui.stats.StatsScreen
+import com.alcohol.englishstudying.ui.tags.TagScreen
 import com.alcohol.englishstudying.ui.study.StudyHomeScreen
 import com.alcohol.englishstudying.ui.study.StudyScreen
 import com.alcohol.englishstudying.ui.study.StudyViewModel
@@ -57,6 +58,7 @@ object Routes {
     const val IMPORT = "import"
     const val STATS = "stats"
     const val CARD_FIELDS = "card_fields"
+    const val TAGS = "tags"
 
     const val WORD_EDIT = "word_edit"
     const val ARG_WORD_ID = "wordId"
@@ -204,8 +206,13 @@ fun AppNavHost(
                     onAddWord = { navController.navigate(Routes.wordEdit()) },
                     onOpenImport = { navController.navigate(Routes.IMPORT) },
                     onOpenDecks = { navController.navigate(Routes.DECKS) },
-                    onOpenStats = { navController.navigate(Routes.STATS) }
+                    onOpenStats = { navController.navigate(Routes.STATS) },
+                    onOpenTags = { navController.navigate(Routes.TAGS) }
                 )
+            }
+
+            composable(Routes.TAGS) {
+                TagScreen(container = container, onBack = navController::popBackStack)
             }
 
             composable(Routes.ENHANCE) {

@@ -161,11 +161,10 @@ class StudyHomeViewModel(
                     // 「待复习」= 今天还发得出来的复习卡 + 学习步里已经到期的卡。
                     // 复习卡按每日上限剩余额度截断（用完就是 0）；学习卡是在途的卡，
                     // 不受复习上限影响，照常算进来。
-                    regularDueCount = run {
-                        val learningDue = (progress.learningCount - progress.coolingCount).coerceAtLeast(0)
-                        val reviewDue = (progress.dueCount - learningDue).coerceAtLeast(0)
-                        minOf(reviewDue, progress.reviewBudgetRemaining) + learningDue
-                    },
+                    // 「待复习」= 今天还发得出来的复习卡 + 学习步里已经到期的卡，
+                    // 口径和卡片页顶部进度条用的那一个完全一致（见 DailyProgress.regularDueToday），
+                    // 不要在这里另写一遍，否则两个界面会慢慢走偏。
+                    regularDueCount = progress.regularDueToday,
                     reviewTableCount = reviewTableCount,
                     startedToday = progress.startedToday,
                     masteredToday = progress.masteredToday,

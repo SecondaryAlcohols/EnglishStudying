@@ -15,9 +15,15 @@ data class WordListRow(
     val stateName: CardState?,
     val dueAtMinutes: Long?,
     val intervalDays: Double?,
-    val lapses: Int?
+    val lapses: Int?,
+    /** 用户标签，逗号分隔（`GROUP_CONCAT` 拼出来的）；没有标签时为 null。 */
+    val userTags: String? = null
 ) {
     val state: CardState get() = stateName ?: CardState.NEW
+
+    /** 用户标签列表 —— 和 `word.tagList`（系统标签）是两回事。 */
+    val userTagList: List<String>
+        get() = userTags.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
 
     /**
      * 展示用的状态：**「重学中」按积压算，不看 `state` 列。**

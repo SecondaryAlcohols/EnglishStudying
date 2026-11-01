@@ -10,7 +10,10 @@ import com.alcohol.englishstudying.data.local.WordEntity
 import com.alcohol.englishstudying.data.repo.DailyProgress
 import com.alcohol.englishstudying.data.repo.DeckRepository
 import com.alcohol.englishstudying.data.repo.RelationRepository
+import com.alcohol.englishstudying.data.local.TodayLogRow
+import com.alcohol.englishstudying.data.local.UserTagWithCount
 import com.alcohol.englishstudying.data.repo.StudyCard
+import com.alcohol.englishstudying.data.repo.UserTagRepository
 import com.alcohol.englishstudying.data.repo.StudyRepository
 import com.alcohol.englishstudying.data.repo.WordRepository
 import com.alcohol.englishstudying.data.prefs.SettingsRepository
@@ -75,6 +78,8 @@ data class StudyUiState(
     val relations: List<RelatedWord> = emptyList(),
     /** 当前这张卡所属的词表名，供「词表」字段渲染。换卡时重新查。 */
     val decks: List<String> = emptyList(),
+    /** 当前这张卡的**用户标签**（易混/写作…），显示在卡片底部，点击可编辑。 */
+    val userTags: List<String> = emptyList(),
     /** 当前卡「变形」文本里提到的词（小写）→ 词 id，命中的可点击跳转。 */
     val derivationsIndex: Map<String, Long> = emptyMap(),
     /**
@@ -120,7 +125,8 @@ class StudyViewModel(
     private val settingsRepository: SettingsRepository,
     private val wordRepository: WordRepository,
     private val relationRepository: RelationRepository,
-    private val deckRepository: DeckRepository
+    private val deckRepository: DeckRepository,
+    private val userTagRepository: UserTagRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(StudyUiState())
@@ -194,6 +200,7 @@ class StudyViewModel(
     private var relationsJob: Job? = null
     private var derivationsJob: Job? = null
     private var decksJob: Job? = null
+    private var userTagsJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -395,7 +402,8 @@ class StudyViewModel(
         val wordId = _state.value.current?.word?.id
         if (wordId == null) {
             decksJob?.cancel()
-            _state.update { it.copy(relations = emptyList(), decks = emptyList()) }
+            userTagsJob?.cancel()
+            _state.update { it.copy(relations = emptyList(), decks = emptyList(), userTags = emptyList()) }
             return
         }
         relationsJob = viewModelScope.launch {
@@ -408,6 +416,7 @@ class StudyViewModel(
         }
         observeDerivationsIndexForCurrent(wordId)
         loadDecksForCurrent(wordId)
+        loadUserTagsForCurrent(wordId)
     }
 
     /**
@@ -420,6 +429,20 @@ class StudyViewModel(
             val names = deckRepository.decksForWord(wordId).map { it.name }
             if (_state.value.current?.word?.id == wordId) {
                 _state.update { it.copy(decks = names) }
+            }
+        }
+    }
+
+    /**
+     * 当前卡的用户标签。只在换卡时查一次 —— 打标签之后由 [saveUserTags] 直接写回状态，
+     * 不必再查库。
+     */
+    private fun loadUserTagsForCurrent(wordId: Long) {
+        userTagsJob?.cancel()
+        userTagsJob = viewModelScope.launch {
+            val names = userTagRepository.ofWord(wordId).map { it.name }
+            if (_state.value.current?.word?.id == wordId) {
+                _state.update { it.copy(userTags = names) }
             }
         }
     }
@@ -741,6 +764,36 @@ class StudyViewModel(
         }
     }
 
+    // ---- 卡片页右上角的三个小工具：搜索 / 打标签 / 看日志 ----
+
+    /** 搜索单词：按词头或释义模糊匹配，交给弹窗边打边查。 */
+    suspend fun searchWords(query: String, limit: Int = 30): List<WordEntity> =
+        wordRepository.search(query, limit)
+
+    /** 打标签弹窗：全部用户标签（带使用次数，用得多的排前面）。 */
+    suspend fun allUserTags(): List<UserTagWithCount> = userTagRepository.allWithCount()
+
+    /** 这个词现在挂着的用户标签名。 */
+    suspend fun userTagsOf(wordId: Long): List<String> =
+        userTagRepository.ofWord(wordId).map { it.name }
+
+    /**
+     * 覆盖当前词的**用户标签**（系统标签 `words.tags` 一个字都不动）。
+     *
+     * 名字在库里的直接挂，不在的当场建 —— 弹窗里用户输入的是名字，不该先跳去标签页建一次。
+     */
+    suspend fun saveUserTags(wordId: Long, names: List<String>) {
+        userTagRepository.setWordTags(wordId, names)
+        // 卡片底部那排标签是状态里的一份拷贝，存完立刻刷新，不用等下一张卡
+        val normalized = names.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        if (_state.value.current?.word?.id == wordId) {
+            _state.update { it.copy(userTags = normalized) }
+        }
+    }
+
+    /** 今天的作答流水，最新在上。 */
+    suspend fun todayLogs(limit: Int = 300): List<TodayLogRow> = studyRepository.todayLogs(limit)
+
     companion object {
         /**
          * 复习卡点「模糊」之后，隔多少个词再考一次。
@@ -757,7 +810,8 @@ class StudyViewModel(
                     settingsRepository = container.settings,
                     wordRepository = container.words,
                     relationRepository = container.relations,
-                    deckRepository = container.decks
+                    deckRepository = container.decks,
+                    userTagRepository = container.userTags
                 )
             }
         }

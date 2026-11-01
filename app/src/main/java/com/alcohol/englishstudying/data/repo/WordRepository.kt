@@ -15,9 +15,19 @@ class WordRepository(
         query: String = "",
         deckId: Long? = null,
         stateFilter: CardState? = null,
-        priorityOnly: Boolean = false
+        priorityOnly: Boolean = false,
+        /** 选中的用户标签；空集表示不按标签筛。多选是「任一命中」。 */
+        tagIds: Set<Long> = emptySet()
     ): Flow<List<WordListRow>> =
-        db.wordDao().observeList(query.trim(), deckId, stateFilter, priorityOnly)
+        db.wordDao().observeList(
+            query = query.trim(),
+            deckId = deckId,
+            stateFilter = stateFilter,
+            priorityOnly = priorityOnly,
+            tagFilter = if (tagIds.isEmpty()) 0 else 1,
+            // 空集合会在 SQL 里拼出 `IN ()`，语法错误；占位一个不存在的 id
+            tagIds = tagIds.toList().ifEmpty { listOf(-1L) }
+        )
 
     fun observeCount(deckId: Long? = null): Flow<Int> = db.wordDao().observeCount(deckId)
 
@@ -49,6 +59,14 @@ class WordRepository(
     }
 
     suspend fun count(): Int = db.wordDao().count()
+
+    /** 学习页「搜索单词」弹窗：按词头 / 释义模糊匹配，最多 [limit] 条。 */
+    suspend fun search(query: String, limit: Int = 30): List<WordEntity> {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) return emptyList()
+        return db.wordDao().searchByHeadword(trimmed, limit)
+    }
+
 
     /** id 为 0 视为新增，否则更新。两种情况都会刷新 updatedAt。 */
     suspend fun save(word: WordEntity): Long {

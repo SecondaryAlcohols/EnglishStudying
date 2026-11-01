@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Upsert
+import com.alcohol.englishstudying.domain.srs.Rating
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -93,6 +94,28 @@ interface ReviewDao {
         endMillis: Long,
         deckId: Long?
     ): List<ReviewStateEntity>
+
+    /** [hazilyReviewedToday] 的计数版，供卡片页顶部的「今日进度条」画浅绿段。 */
+    @Query(
+        """
+        SELECT COUNT(*) FROM review_states r
+        WHERE r.state = 'REVIEW'
+          AND (:deckId IS NULL OR r.wordId IN (SELECT wordId FROM deck_words WHERE deckId = :deckId))
+          AND EXISTS (
+              SELECT 1 FROM review_logs l
+              WHERE l.wordId = r.wordId
+                AND l.reviewedAt >= :startMillis AND l.reviewedAt < :endMillis
+                AND l.rating = 'HARD'
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM review_logs g
+              WHERE g.wordId = r.wordId
+                AND g.reviewedAt >= :startMillis AND g.reviewedAt < :endMillis
+                AND g.rating IN ('GOOD', 'EASY')
+          )
+        """
+    )
+    fun observeHazyCount(startMillis: Long, endMillis: Long, deckId: Long?): Flow<Int>
 
     /**
      * 全部学习中的卡片（包含正在冷却中的卡片），供提前复习使用。
@@ -603,6 +626,26 @@ interface ReviewDao {
     suspend fun todayStudiedWords(startMillis: Long, endMillis: Long): List<TodayStudiedWordRow>
 
     /**
+     * 今天每一次作答的流水，最新在上 —— 学习页右上角「查看日志」弹窗用。
+     *
+     * 和 [todayStudiedWords] 的区别是**不按词聚合**：那边一个词一行、给导出用；
+     * 这边一次作答一行，能看出「同一个词今天答了几次、每次给的是什么」。
+     */
+    @Query(
+        """
+        SELECT l.id AS id, l.wordId AS wordId, w.headword AS headword,
+               l.rating AS rating, l.reviewedAt AS reviewedAt,
+               l.intervalDaysAfter AS intervalDaysAfter
+        FROM review_logs l
+        JOIN words w ON w.id = l.wordId
+        WHERE l.reviewedAt >= :startMillis AND l.reviewedAt < :endMillis
+        ORDER BY l.reviewedAt DESC
+        LIMIT :limit
+        """
+    )
+    suspend fun todayLogs(startMillis: Long, endMillis: Long, limit: Int): List<TodayLogRow>
+
+    /**
      * 今天离开「未学池」的词数，也就是「今日新学词」—— 每日新词额度的唯一口径。
      *
      * **两条来源取并集**，因为词离开未学池有两条路：
@@ -690,4 +733,14 @@ data class TodayStudiedWordRow(
     val answerCount: Int,
     val againCount: Int,
     val lastReviewedAt: Long
+)
+
+/** [ReviewDao.todayLogs] 的一行：一次作答。 */
+data class TodayLogRow(
+    val id: Long,
+    val wordId: Long,
+    val headword: String,
+    val rating: Rating,
+    val reviewedAt: Long,
+    val intervalDaysAfter: Double
 )

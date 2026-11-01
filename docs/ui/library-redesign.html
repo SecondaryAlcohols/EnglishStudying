@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>词库改版 · 设计稿</title>
+<style>
+  :root{
+    --primary:#3B5B7A;
+    --primary-soft:#E3EAF1;
+    --teal:#3A6B63;
+    --teal-soft:#DCEBE7;
+    --bg:#F7F7FA;
+    --surface:#FFFFFF;
+    --surface-2:#EEF0F4;
+    --text:#1A1C1E;
+    --text-2:#5B6067;
+    --text-3:#8B9099;
+    --line:#E4E6EB;
+    --tag-a:#8A5A2B; --tag-a-bg:#FBF0DF;
+    --tag-b:#2F5E8C; --tag-b-bg:#E4EFFA;
+    --tag-c:#8C3B3B; --tag-c-bg:#FBE7E7;
+    --tag-d:#3A6B63; --tag-d-bg:#DFEFEB;
+    --tag-e:#5B4A8C; --tag-e-bg:#ECE7F8;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:linear-gradient(180deg,#F2F4F8 0%,#EDEFF5 100%);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding:36px 28px 56px;
+  }
+  .page-head{max-width:1320px;margin:0 auto 26px;}
+  .page-head h1{font-size:22px;font-weight:650;margin:0 0 8px;letter-spacing:-.2px;}
+  .page-head p{margin:0;color:var(--text-2);font-size:13.5px;line-height:1.7;}
+  .page-head .kbd{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#fff;border:1px solid var(--line);border-radius:6px;padding:1px 5px;}
+
+  .stage{max-width:880px;margin:0 auto;display:flex;flex-wrap:wrap;justify-content:center;gap:34px 40px;align-items:flex-start;}
+  .frame{width:390px;}
+  .frame .cap{margin:12px 2px 0;font-size:12.5px;color:var(--text-2);line-height:1.6;}
+  .frame .cap b{color:var(--text);font-weight:600;}
+
+  .phone{
+    position:relative;width:390px;height:844px;background:var(--bg);
+    border-radius:40px;border:1px solid #DDE0E7;
+    box-shadow:0 18px 44px rgba(24,39,58,.12), 0 2px 6px rgba(24,39,58,.05);
+    overflow:hidden;display:flex;flex-direction:column;
+  }
+  .statusbar{height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-size:12px;color:#2B2F35;flex:0 0 auto;}
+  .statusbar .right{display:flex;gap:5px;align-items:center;opacity:.75;}
+
+  .appbar{display:flex;align-items:center;gap:6px;padding:2px 12px 8px 20px;flex:0 0 auto;}
+  .appbar h2{font-size:20px;font-weight:650;margin:0;flex:1;letter-spacing:-.2px;}
+  .icon-btn{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;color:var(--text-2);}
+  .icon-btn svg{width:21px;height:21px;fill:currentColor;}
+
+  .content{flex:1;overflow:hidden;padding:0 0 8px;display:flex;flex-direction:column;}
+
+  /* 搜索框 */
+  .search{margin:2px 16px 10px;height:46px;border-radius:14px;background:var(--surface-2);
+    display:flex;align-items:center;gap:10px;padding:0 14px;color:var(--text-3);font-size:14px;}
+  .search svg{width:19px;height:19px;fill:currentColor;opacity:.8;}
+  .search .clr{margin-left:auto;width:20px;height:20px;border-radius:50%;background:#C9CED8;
+    display:grid;place-items:center;flex:0 0 auto;}
+  .search .clr svg{width:13px;height:13px;fill:#fff;opacity:1;}
+
+  .chiprow{display:flex;gap:8px;padding:0 16px 8px;overflow:hidden;
+    -webkit-mask-image:linear-gradient(90deg,#000 86%,transparent 100%);mask-image:linear-gradient(90deg,#000 86%,transparent 100%);}
+  .chip{height:32px;padding:0 13px;border-radius:16px;border:1px solid var(--line);background:var(--surface);
+    font-size:13px;color:var(--text-2);display:flex;align-items:center;gap:6px;white-space:nowrap;}
+  .chip.on{background:var(--primary);border-color:var(--primary);color:#fff;}
+  .chip .n{font-size:11.5px;opacity:.75;}
+
+  .tagsec{padding:2px 16px 10px;}
+  .tagsec .head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+  .tagsec .head .t{font-size:12.5px;color:var(--text-3);letter-spacing:.2px;}
+  .tagsec .head .a{font-size:12.5px;color:var(--primary);}
+
+  .tag{height:28px;padding:0 11px;border-radius:9px;font-size:12.5px;display:inline-flex;align-items:center;gap:5px;}
+  .tag.a{color:var(--tag-a);background:var(--tag-a-bg);}
+  .tag.b{color:var(--tag-b);background:var(--tag-b-bg);}
+  .tag.c{color:var(--tag-c);background:var(--tag-c-bg);}
+  .tag.d{color:var(--tag-d);background:var(--tag-d-bg);}
+  .tag.e{color:var(--tag-e);background:var(--tag-e-bg);}
+  .tag.ghost{color:var(--text-2);background:var(--surface);border:1px solid var(--line);}
+
+  .countline{padding:2px 20px 8px;font-size:12px;color:var(--text-3);display:flex;justify-content:space-between;}
+  .countline b{color:var(--primary);font-weight:600;}
+
+  .list{flex:1;overflow:hidden;padding:0 12px;display:flex;flex-direction:column;gap:2px;
+    -webkit-mask-image:linear-gradient(180deg,#000 90%,transparent 100%);mask-image:linear-gradient(180deg,#000 90%,transparent 100%);}
+  .row{background:var(--surface);border-radius:16px;padding:13px 14px;display:flex;gap:12px;align-items:flex-start;}
+  .row .main{flex:1;min-width:0;}
+  .row .hw{display:flex;align-items:baseline;gap:8px;}
+  .row .hw .w{font-size:17px;font-weight:600;letter-spacing:-.1px;}
+  .row .hw .p{font-size:11.5px;color:var(--primary);background:var(--primary-soft);border-radius:5px;padding:1px 5px;}
+  .row .mn{margin-top:3px;font-size:13px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .row .tags{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;}
+  .row .side{text-align:right;flex:0 0 auto;padding-top:2px;}
+  .st{font-size:11.5px;padding:2px 8px;border-radius:20px;display:inline-block;}
+  .st.learn{color:#2F5E8C;background:#E4EFFA;}
+  .st.done{color:#3A6B63;background:#DFEFEB;}
+  .st.new{color:var(--text-3);background:var(--surface-2);}
+  .st.out{color:#8C3B3B;background:#FBE7E7;}
+  .side .due{margin-top:6px;font-size:11px;color:var(--text-3);}
+
+  .banner{margin:0 16px 10px;padding:10px 12px;border-radius:12px;background:#fff;border:1px solid var(--line);
+    display:flex;gap:10px;align-items:center;font-size:12.5px;color:var(--text-2);}
+  .banner svg{width:18px;height:18px;fill:var(--primary);flex:0 0 auto;}
+
+  .bottomnav{height:62px;border-top:1px solid var(--line);background:var(--surface);display:flex;flex:0 0 auto;}
+  .navitem{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--text-3);font-size:11px;}
+  .navitem.on{color:var(--primary);}
+  .navitem svg{width:22px;height:22px;fill:currentColor;}
+
+  /* 标签管理页 */
+  .taglist{padding:6px 16px;display:flex;flex-direction:column;gap:8px;}
+  .tagcard{background:var(--surface);border-radius:14px;padding:13px 14px;display:flex;align-items:center;gap:12px;}
+  .dot{width:10px;height:10px;border-radius:50%;flex:0 0 auto;}
+  .tagcard .nm{flex:1;font-size:14.5px;font-weight:550;}
+  .tagcard .ct{font-size:12px;color:var(--text-3);}
+  .tagcard .del{color:var(--text-3);font-size:12px;}
+  .newtag{margin:14px 16px 0;display:flex;gap:8px;}
+  .newtag .field{flex:1;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--surface);
+    display:flex;align-items:center;padding:0 13px;color:var(--text-3);font-size:13.5px;}
+  .newtag .btn{height:44px;padding:0 16px;border-radius:12px;background:var(--primary);color:#fff;font-size:13.5px;display:flex;align-items:center;}
+  .hint{margin:12px 16px 0;padding:12px 13px;border-radius:12px;background:#FFF9EA;border:1px solid #F1E3BE;
+    font-size:12px;color:#6B5A2E;line-height:1.65;}
+
+  /* 弹窗 */
+  .scrim{position:absolute;inset:0;background:rgba(20,24,30,.32);}
+  .dialog{position:absolute;left:24px;right:24px;top:190px;background:var(--surface);border-radius:26px;padding:20px 20px 14px;
+    box-shadow:0 20px 50px rgba(0,0,0,.24);}
+  .dialog h3{margin:0 0 6px;font-size:18px;font-weight:650;}
+  .dialog .desc{font-size:12.5px;color:var(--text-2);line-height:1.6;margin-bottom:14px;}
+  .dialog .flow{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
+  .picked{height:28px;padding:0 11px;border-radius:9px;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;}
+  .picked.on{background:var(--primary);color:#fff;}
+  .picked.on svg{width:13px;height:13px;fill:#fff;}
+  .addrow{display:flex;gap:8px;align-items:center;margin-top:4px;}
+  .addrow .field{flex:1;height:42px;border-radius:12px;border:1px solid var(--line);display:flex;align-items:center;
+    padding:0 12px;font-size:13px;color:var(--text-3);}
+  .addrow .plus{width:42px;height:42px;border-radius:12px;background:var(--surface-2);display:grid;place-items:center;color:var(--text-2);}
+  .dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;font-size:14px;}
+  .dialog .actions .t{padding:8px 14px;border-radius:10px;color:var(--primary);}
+
+  .notes{max-width:1320px;margin:38px auto 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;}
+  .note{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px 18px;}
+  .note h4{margin:0 0 8px;font-size:13.5px;font-weight:650;}
+  .note ul{margin:0;padding-left:18px;color:var(--text-2);font-size:12.5px;line-height:1.85;}
+  .note code{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;background:var(--surface-2);border-radius:5px;padding:1px 4px;}
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>词库改版 · 设计稿</h1>
+  <p>四屏：① 新词库列表 ② 搜索命中“我的标签” ③ 我的标签管理 ④ 学习页加标签弹窗。
+     核心变化是把 <b>用户自定义标签</b> 从原来的 <span class="kbd">words.tags</span> 里拆出来单独存，
+     系统标签（L0/L1、词表、考研/牛津3000…）继续留在词条上，两个概念不再混在一个字符串里。</p>
+</div>
+
+<div class="stage">
+
+  <!-- ① 词库列表 -->
+  <div class="frame">
+    <div class="phone">
+      <div class="statusbar"><span>16:40</span><span class="right">▮▮▮ ⌁ 84%</span></div>
+
+      <div class="appbar">
+        <h2>词库</h2>
+        <div class="icon-btn" title="导入">
+          <svg viewBox="0 0 24 24"><path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/></svg>
+        </div>
+        <div class="icon-btn" title="统计">
+          <svg viewBox="0 0 24 24"><path d="M5 9.2h3V19H5zM10.6 5h2.8v14h-2.8zm5.6 8H19v6h-2.8z"/></svg>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="search">
+          <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
+          搜单词、释义或我的标签
+        </div>
+
+        <div class="chiprow">
+          <div class="chip on">全部词表</div>
+          <div class="chip">真题高频 L0 <span class="n">278</span></div>
+          <div class="chip">次高频 L1 <span class="n">492</span></div>
+          <div class="chip">中频 L2 <span class="n">1520</span></div>
+        </div>
+
+        <div class="chiprow">
+          <div class="chip on">全部</div>
+          <div class="chip">未学 <span class="n">5255</span></div>
+          <div class="chip">学习中 <span class="n">46</span></div>
+          <div class="chip">已掌握 <span class="n">1386</span></div>
+          <div class="chip">优先学</div>
+        </div>
+
+        <div class="tagsec">
+          <div class="head"><span class="t">我的标签</span><span class="a">管理 ›</span></div>
+          <div class="chiprow" style="padding:0;">
+            <div class="tag a">易混 <span style="opacity:.6">12</span></div>
+            <div class="tag b">写作 <span style="opacity:.6">34</span></div>
+            <div class="tag c">重点 <span style="opacity:.6">8</span></div>
+            <div class="tag d">听力 <span style="opacity:.6">5</span></div>
+          </div>
+        </div>
+
+        <div class="countline"><span>6733 个词</span><span>按 <b>词频</b> 排</span></div>
+
+        <div class="list">
+          <div class="row">
+            <div class="main">
+              <div class="hw"><span class="w">presence</span><span class="p">n.</span></div>
+              <div class="mn">存在；出席；风度</div>
+              <div class="tags"><span class="tag a">易混</span><span class="tag c">重点</span></div>
+            </div>
+            <div class="side"><span class="st learn">学习中</span><div class="due">12 分钟后</div></div>
+          </div>
+
+          <div class="row">
+            <div class="main">
+              <div class="hw"><span class="w">random</span><span class="p">adj.</span></div>
+              <div class="mn">随意的；随机的；胡乱的</div>
+              <div class="tags"><span class="tag b">写作</span></div>
+            </div>
+            <div class="side"><span class="st new">未学</span><div class="due">未排期</div></div>
+          </div>
+
+          <div class="row">
+            <div class="main">
+              <div class="hw"><span class="w">done</span><span class="p">adj.</span></div>
+              <div class="mn">已完成的；煮熟的</div>
+              <div class="tags"><span class="tag d">听力</span></div>
+            </div>
+            <div class="side"><span class="st done">已掌握</span><div class="due">11-07</div></div>
+          </div>
+
+          <div class="row">
+            <div class="main">
+              <div class="hw"><span class="w">reluctant</span><span class="p">adj.</span></div>
+              <div class="mn">不情愿的；勉强的</div>
+              <div class="tags"><span class="tag a">易混</span><span class="tag e">熟词僻义</span></div>
+            </div>
+            <div class="side"><span class="st learn">学习中</span><div class="due">3 天后</div></div>
+          </div>
+
+          <div class="row">
+            <div class="main">
+              <div class="hw"><span class="w">revenue</span><span class="p">n.</span></div>
+              <div class="mn">收入；税收；营业额</div>
+              <div class="tags"><span class="tag c">重点</span></div>
+            </div>
+            <div class="side"><span class="st done">已掌握</span><div class="due">10-29</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bottomnav">
+        <div class="navitem"><svg viewBox="0 0 24 24"><path d="M12 3 1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>学习</div>
+        <div class="navitem on"><svg viewBox="0 0 24 24"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h10v2H4z"/></svg>词库</div>
+        <div class="navitem"><svg viewBox="0 0 24 24"><path d="m19 9 1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm0 6-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15zM9 19l1.25-2.75L13 15l-2.75-1.25L9 11l-1.25 2.75L5 15l2.75 1.25L9 19zm0-8 1.25-2.75L13 7l-2.75-1.25L9 3 7.75 5.75 5 7l2.75 1.25L9 11z"/></svg>增强</div>
+        <div class="navitem"><svg viewBox="0 0 24 24"><path d="M19.14 12.94a7.07 7.07 0 0 0 0-1.88l2.03-1.58a.5.5 0 0 0 .12-.62l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7 7 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.58.24-1.12.55-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.86a.5.5 0 0 0 .12.62l2.03 1.58a7.07 7.07 0 0 0 0 1.88l-2.03 1.58a.5.5 0 0 0-.12.62l1.92 3.32c.12.22.38.3.6.22l2.39-.96c.5.39 1.04.7 1.62.94l.36 2.54c.04.24.24.42.5.42h3.84c.26 0 .46-.18.5-.42l.36-2.54c.58-.24 1.12-.55 1.62-.94l2.39.96c.22.08.48 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.62l-2.03-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg>设置</div>
+      </div>
+    </div>
+    <div class="cap"><b>① 词库列表。</b>两排筛选：词表 / 状态；下面是「我的标签」横向标签（带数量）。
+      列表行只展示用户标签，系统标签（L0/L1、考研、牛津3000…）收进详情页，避免每行堆五六个灰标签。</div>
+  </div>
+
+  <!-- ② 搜索命中标签 -->
+  <div class="frame">
+    <div class="phone">
+      <div class="statusbar"><span>16:41</span><span class="right">▮▮▮ ⌁ 84%</span></div>
+
+      <div class="appbar">
+        <div class="icon-btn" style="margin-left:-8px">
+          <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+        </div>
+        <h2>搜索</h2>
+      </div>
+
+      <div class="content">
+        <div class="search" style="background:#fff;border:1.5px solid var(--primary)">
+          <svg viewBox="0 0 24 24" style="fill:var(--primary);opacity:1"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
+          <span style="color:var(--text);font-weight:500">写作</span>
+          <span style="width:1.5px;height:17px;background:var(--primary);display:inline-block;margin-left:-6px"></span>
+          <span class="clr"><svg viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></span>
+        </div>
+
+        <div class="banner">
+          <svg viewBox="0 0 24 24"><path d="M17.63 5.84C17.27 5.33 16.67 5 16 5H5c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h11c.67 0 1.27-.33 1.63-.84L22 12l-4.37-6.16z"/></svg>
+          <span>命中我的标签 <b style="color:var(--tag-b)">写作</b> · 34 个词</span>
+          <span style="margin-left:auto;color:var(--primary);font-size:12.5px">只搜这个词</span>
+        </div>
+
+        <div class="countline"><span>结果 34 条</span><span>词头 / 释义 / 标签 一起搜</span></div>
+
+        <div class="list">
+          <div class="row">
+            <div class="main">
+              <div class="hw"><span class="w">random</span><span class="p">adj.</span></div>
+              <div class="mn">随意的；随机的；胡乱的</div>
+              <div class="tags"><span class="tag b">写作</span></div>
+            </div>
+            <div class="side"><span class="st new">未学</span><div class="due">未排期</div></div>
+          </div>
+          <div class="row">
+            <div class="main">
+              <div class="hw"><span class="w">implication</span><span class="p">n.</span></div>
+              <div class="mn">影响；含义；暗示</div>
+              <div class="tags"><span class="tag b">写作</span><span class="tag c">重点</span></div>
+            </div>
+            <div class="side"><span class="st done">已掌握</span><div class="due">11-03</div></div>
+          </div>
+          <div class="row">
+            <div class="main">
+              <div class="hw"><span class="w">justify</span><span class="p">v.</span></div>
+              <div class="mn">证明…正当；为…辩解</div>
+              <div class="tags"><span class="tag b">写作</span></div>
+            </div>
+            <div class="side"><span class="st done">已掌握</span><div class="due">11-01</div></div>
+          </div>
+          <div class="row">
+            <div class="main">
+              <div class="hw"><span class="w">measured</span><span class="p">adj.</span></div>
+              <div class="mn">慎重的；有分寸的；量过的</div>
+              <div class="tags"><span class="tag b">写作</span><span class="tag a">易混</span></div>
+            </div>
+            <div class="side"><span class="st learn">学习中</span><div class="due">明天</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bottomnav">
+        <div class="navitem"><svg viewBox="0 0 24 24"><path d="M12 3 1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>学习</div>
+        <div class="navitem on"><svg viewBox="0 0 24 24"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h10v2H4z"/></svg>词库</div>
+        <div class="navitem"><svg viewBox="0 0 24 24"><path d="m19 9 1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm0 6-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15zM9 19l1.25-2.75L13 15l-2.75-1.25L9 11l-1.25 2.75L5 15l2.75 1.25L9 19zm0-8 1.25-2.75L13 7l-2.75-1.25L9 3 7.75 5.75 5 7l2.75 1.25L9 11z"/></svg>增强</div>
+        <div class="navitem"><svg viewBox="0 0 24 24"><path d="M19.14 12.94a7.07 7.07 0 0 0 0-1.88l2.03-1.58a.5.5 0 0 0 .12-.62l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7 7 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.58.24-1.12.55-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.86a.5.5 0 0 0 .12.62l2.03 1.58a7.07 7.07 0 0 0 0 1.88l-2.03 1.58a.5.5 0 0 0-.12.62l1.92 3.32c.12.22.38.3.6.22l2.39-.96c.5.39 1.04.7 1.62.94l.36 2.54c.04.24.24.42.5.42h3.84c.26 0 .46-.18.5-.42l.36-2.54c.58-.24 1.12-.55 1.62-.94l2.39.96c.22.08.48 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.62l-2.03-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg>设置</div>
+      </div>
+    </div>
+    <div class="cap"><b>② 搜索命中标签。</b>同一个输入框同时匹配词头、释义、我的标签。
+      命中标签时上面出现一条可点掉的提示，点「只搜这个词」= 把这次搜索转成标签筛选。</div>
+  </div>
+
+  <!-- ③ 标签管理 -->
+  <div class="frame">
+    <div class="phone">
+      <div class="statusbar"><span>16:42</span><span class="right">▮▮▮ ⌁ 83%</span></div>
+
+      <div class="appbar">
+        <div class="icon-btn" style="margin-left:-8px">
+          <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+        </div>
+        <h2>我的标签</h2>
+      </div>
+
+      <div class="content">
+        <div class="banner" style="margin-top:2px">
+          <svg viewBox="0 0 24 24"><path d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg>
+          <span>标签只影响<b>筛选和搜索</b>，不参与复习排期。</span>
+        </div>
+
+        <div class="taglist">
+          <div class="tagcard"><span class="dot" style="background:#8A5A2B"></span><span class="nm">易混</span><span class="ct">12 词</span><span class="del">编辑</span></div>
+          <div class="tagcard"><span class="dot" style="background:#2F5E8C"></span><span class="nm">写作</span><span class="ct">34 词</span><span class="del">编辑</span></div>
+          <div class="tagcard"><span class="dot" style="background:#8C3B3B"></span><span class="nm">重点</span><span class="ct">8 词</span><span class="del">编辑</span></div>
+          <div class="tagcard"><span class="dot" style="background:#3A6B63"></span><span class="nm">听力</span><span class="ct">5 词</span><span class="del">编辑</span></div>
+          <div class="tagcard"><span class="dot" style="background:#5B4A8C"></span><span class="nm">熟词僻义</span><span class="ct">3 词</span><span class="del">编辑</span></div>
+        </div>
+
+        <div class="newtag">
+          <div class="field">新建标签，如「翻译易错」</div>
+          <div class="btn">添加</div>
+        </div>
+
+        <div class="hint">系统标签（<b>L0–L3</b>、<b>真题高频</b>、<b>考研</b>、<b>牛津3000</b>、<b>派生词</b>…）来自词库本身，不在这里编辑，它们继续在词表 / 层级筛选中使用。</div>
+      </div>
+    </div>
+    <div class="cap"><b>③ 标签管理。</b>这里是<b>用户标签</b>的唯一入口：改名、删除、看用量。
+      删除只影响筛选，不会动词条本身。</div>
+  </div>
+
+  <!-- ④ 学习页加标签 -->
+  <div class="frame">
+    <div class="phone">
+      <div class="statusbar"><span>16:43</span><span class="right">▮▮▮ ⌁ 83%</span></div>
+
+      <div class="appbar">
+        <div class="icon-btn" style="margin-left:-8px">
+          <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+        </div>
+        <h2>学习</h2>
+        <div class="icon-btn"><svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg></div>
+        <div class="icon-btn"><svg viewBox="0 0 24 24"><path d="M17.63 5.84C17.27 5.33 16.67 5 16 5H5c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h11c.67 0 1.27-.33 1.63-.84L22 12l-4.37-6.16z"/></svg></div>
+        <div class="icon-btn"><svg viewBox="0 0 24 24"><path d="M3 5h18v2H3zm0 6h12v2H3zm0 6h18v2H3z"/></svg></div>
+        <div class="icon-btn"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></div>
+      </div>
+
+      <div class="content" style="filter:blur(1.2px);opacity:.55;padding:0 16px;">
+        <div style="height:96px;background:#E4E6EB;border-radius:18px;margin-bottom:12px"></div>
+        <div style="height:44px;width:64%;background:#E4E6EB;border-radius:10px;margin:0 auto 10px"></div>
+        <div style="height:22px;width:40%;background:#E9EBF0;border-radius:8px;margin:0 auto 26px"></div>
+        <div style="height:120px;background:#EDEFF4;border-radius:16px"></div>
+      </div>
+
+      <div class="scrim"></div>
+      <div class="dialog">
+        <h3>标签 · presence</h3>
+        <div class="desc">只显示你自己建的标签；系统标签（L0/L1、词表）不在这里出现。</div>
+        <div class="flow">
+          <span class="picked on">易混 <svg viewBox="0 0 24 24"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></span>
+          <span class="picked" style="background:#E4EFFA;color:#2F5E8C">写作</span>
+          <span class="picked" style="background:#FBE7E7;color:#8C3B3B">重点</span>
+          <span class="picked" style="background:#DFEFEB;color:#3A6B63">听力</span>
+          <span class="picked" style="background:#ECE7F8;color:#5B4A8C">熟词僻义</span>
+        </div>
+        <div class="addrow">
+          <div class="field">新标签</div>
+          <div class="plus"><svg viewBox="0 0 24 24" style="width:20px;height:20px;fill:currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></svg></div>
+        </div>
+        <div class="actions"><span class="t" style="color:var(--text-2)">取消</span><span class="t">保存</span></div>
+      </div>
+    </div>
+    <div class="cap"><b>④ 学习页 · 加标签。</b>和词库用同一套用户标签；点开即弹出，
+      保存后卡片上的标签块立刻更新，不打断当前这一张卡。</div>
+  </div>
+
+</div>
+
+<div class="notes">
+  <div class="note">
+    <h4>要一起改的三件事</h4>
+    <ul>
+      <li><b>数据</b>：新建 <code>user_tags(id, name)</code> + <code>word_user_tags(wordId, tagId)</code>，原来的 <code>words.tags</code> 不再写入用户标签。</li>
+      <li><b>搜索</b>：<code>headword</code> / <code>meanings</code> / <code>user_tags</code> 三段合起来匹配，命中标签时单独提示一条。</li>
+      <li><b>学习页</b>：加标签弹窗只列用户标签，并支持当场新建；搜索框自动聚焦弹键盘。</li>
+    </ul>
+  </div>
+  <div class="note">
+    <h4>列表行只留三样东西</h4>
+    <ul>
+      <li>左：词头 + 词性 + 一行释义；</li>
+      <li>下：<b>用户标签</b>（彩色小块，最多两三个）；</li>
+      <li>右：状态（未学 / 学习中 / 已掌握 / 已移出）+ 下次复习日期。</li>
+    </ul>
+  </div>
+  <div class="note">
+    <h4>可以再讨论的点</h4>
+    <ul>
+      <li>「我的标签」是放在筛选区常驻，还是收进「筛选」按钮里（省高度）？</li>
+      <li>标签要不要配色？（现方案按创建顺序自动分配 5 种柔和色）</li>
+      <li>词表 / 状态 / 标签三者是<b>与</b>关系还是标签单独覆盖？现在是「与」，标签可多选。</li>
+    </ul>
+  </div>
+</div>
+
+</body>
+</html>

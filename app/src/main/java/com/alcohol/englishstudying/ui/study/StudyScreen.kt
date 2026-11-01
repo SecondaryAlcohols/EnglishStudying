@@ -1,6 +1,7 @@
 package com.alcohol.englishstudying.ui.study
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -25,7 +27,10 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -43,14 +48,22 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.alcohol.englishstudying.data.local.RelatedWord
 import com.alcohol.englishstudying.data.repo.DailyProgress
@@ -61,6 +74,7 @@ import com.alcohol.englishstudying.domain.model.CardFieldConfig
 import com.alcohol.englishstudying.domain.srs.CardState
 import com.alcohol.englishstudying.domain.srs.Rating
 import com.alcohol.englishstudying.domain.srs.SrsSettings
+import com.alcohol.englishstudying.domain.srs.TodayProgress
 import com.alcohol.englishstudying.ui.components.EmptyState
 import com.alcohol.englishstudying.ui.theme.FrontHeadwordStyle
 import com.alcohol.englishstudying.ui.theme.RatingAgain
@@ -107,6 +121,9 @@ fun StudyScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val card = state.current
     val speaker = rememberWordSpeaker()
+    val scope = rememberCoroutineScope()
+    // 三个工具弹窗互斥：同一时刻只开一个
+    var toolDialog by remember { mutableStateOf<StudyTool?>(null) }
 
     val remainingCount = state.queue.size
     val isRetryOnly = remainingCount > 0 && state.queue.all {
@@ -129,9 +146,18 @@ fun StudyScreen(
                 },
                 title = { Text(if (state.isPracticeMode) "单纯复习" else "学习") },
                 actions = {
+                    // 从左到右：搜索 → 日志 → 编辑。
+                    // 加标签已经挪到卡片底部（和标签显示在一起），顶栏不再留入口。
+                    // 搜索和日志不依赖「手里有没有卡」，永远可点；编辑要针对当前词，
+                    // 没卡时置灰而不是隐藏 —— 隐藏会让顶栏在「有卡 / 没卡」之间来回跳。
+                    IconButton(onClick = { toolDialog = StudyTool.SEARCH }) {
+                        Icon(Icons.Filled.Search, contentDescription = "搜索单词")
+                    }
+                    IconButton(onClick = { toolDialog = StudyTool.LOGS }) {
+                        Icon(Icons.Filled.ReceiptLong, contentDescription = "查看今天的答题日志")
+                    }
                     // 卡片页要改的是「手里这张卡」，所以放编辑入口；导入留给了词库页和学习首页
-                    // （以及下面「词库还是空的」那个空状态）。没有当前卡时置灰而不是隐藏 ——
-                    // 隐藏会让顶栏在「有卡 / 没卡」之间来回跳。
+                    // （以及下面「词库还是空的」那个空状态）。
                     IconButton(
                         onClick = { card?.let { onEditWord(it.word.id) } },
                         enabled = card != null
@@ -225,6 +251,8 @@ fun StudyScreen(
                                 markedAs = state.markedAs,
                                 wordIndex = state.derivationsIndex,
                                 decks = state.decks,
+                                userTags = state.userTags,
+                                onEditTags = { toolDialog = StudyTool.TAGS },
                                 speaker = speaker,
                                 onRate = viewModel::rate,
                                 onMarkTooEasy = viewModel::markTooEasy,
@@ -249,9 +277,44 @@ fun StudyScreen(
             }
         }
     }
-}
 
-// ---- 作答正面 ----
+    // ---- 顶栏三个工具：搜索 / 打标签 / 看日志 ----
+    when (toolDialog) {
+        StudyTool.SEARCH -> WordSearchDialog(
+            onDismiss = { toolDialog = null },
+            onPick = { id ->
+                toolDialog = null
+                onOpenWord(id)
+            },
+            search = { query -> viewModel.searchWords(query) }
+        )
+
+        StudyTool.TAGS -> card?.let { current ->
+            TagsDialog(
+                headword = current.word.headword,
+                wordId = current.word.id,
+                loadAllTags = { viewModel.allUserTags() },
+                loadCurrentTags = { id -> viewModel.userTagsOf(id) },
+                onDismiss = { toolDialog = null },
+                onSave = { names ->
+                    toolDialog = null
+                    scope.launch { viewModel.saveUserTags(current.word.id, names) }
+                }
+            )
+        }
+
+        StudyTool.LOGS -> TodayLogDialog(
+            onDismiss = { toolDialog = null },
+            load = { viewModel.todayLogs() },
+            onOpenWord = { id ->
+                toolDialog = null
+                onOpenWord(id)
+            }
+        )
+
+        null -> Unit
+    }
+}
 
 /**
  * 正面：先自己回忆，再自评「认识 / 不认识」。
@@ -416,6 +479,8 @@ private fun RevealedCard(
     markedAs: CardState?,
     wordIndex: Map<String, Long>,
     decks: List<String>,
+    userTags: List<String>,
+    onEditTags: () -> Unit,
     speaker: WordSpeaker,
     onRate: (Rating) -> Unit,
     onMarkTooEasy: () -> Unit,
@@ -457,6 +522,8 @@ private fun RevealedCard(
                     relations = relations,
                     wordIndex = wordIndex,
                     decks = decks,
+                    userTags = userTags,
+                    onEditTags = onEditTags,
                     onOpenWord = onOpenWord
                 )
             }
@@ -626,21 +693,81 @@ private fun StatsStrip(
     val relearned = progress?.relearnPending ?: 0
     val elapsed = formatElapsed(progress?.elapsedTodayMs ?: 0L)
 
-    Row(
+    val segments = if (isPracticeMode) null else progress?.let { p ->
+        TodayProgress.segments(
+            // 分母就是这一行里能看到的两个数：今日复习 93/361 的 361 + 上限 50
+            reviewTarget = p.reviewTargetToday,
+            newLimit = newLimit,
+            reviewDone = p.reviewDoneToday,
+            masteredNew = p.masteredToday,
+            hazy = p.hazyToday,
+            startedNew = p.startedToday
+        )
+    }
+
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            .padding(vertical = 10.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly
+            .padding(vertical = 10.dp)
     ) {
-        StatCell("今日复习", "$reviewDone/$reviewTotal")
-        StatCell(
-            "初学/掌握/上限",
-            // 上限只算新词，重学词是额外贴上来的一项 —— 所以是 50+17 而不是 67
-            if (relearned > 0) "$newRecognized/$newGraduated/$newLimit+$relearned"
-            else "$newRecognized/$newGraduated/$newLimit"
-        )
-        StatCell("学习时间", elapsed)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            StatCell("今日复习", "$reviewDone/$reviewTotal")
+            StatCell(
+                "初学/掌握/上限",
+                // 上限只算新词，重学词是额外贴上来的一项 —— 所以是 50+17 而不是 67
+                if (relearned > 0) "$newRecognized/$newGraduated/$newLimit+$relearned"
+                else "$newRecognized/$newGraduated/$newLimit"
+            )
+            StatCell("学习时间", elapsed)
+        }
+        if (segments != null && segments.total > 0) {
+            // 深绿 = 今天已了结的（已复习 + 已掌握），浅绿 = 今天动过还没了结的
+            // （模糊待重考 + 初学未掌握），其余就是今天还没做的。
+            TodayProgressBar(
+                doneFraction = segments.doneFraction,
+                inProgressFraction = segments.inProgressFraction,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, top = 8.dp)
+            )
+        }
+    }
+}
+
+/** 今日进度条本体：一条 6dp 的细线，左深绿、接着浅绿，其余是底色。 */
+@Composable
+private fun TodayProgressBar(
+    doneFraction: Float,
+    inProgressFraction: Float,
+    modifier: Modifier = Modifier
+) {
+    val doneColor = Color(0xFF07C187)
+    val inProgressColor = Color(0xFFB5E7D9)
+    val trackColor = MaterialTheme.colorScheme.surface
+    Canvas(
+        modifier
+            .height(6.dp)
+            .clip(RoundedCornerShape(3.dp))
+            .background(trackColor)
+    ) {
+        val doneWidth = size.width * doneFraction.coerceIn(0f, 1f)
+        // 两段都是「占总量的比例」，不是占剩余部分的比例
+        val progressWidth = (size.width * inProgressFraction.coerceIn(0f, 1f))
+            .coerceAtMost((size.width - doneWidth).coerceAtLeast(0f))
+        if (doneWidth > 0f) {
+            drawRect(color = doneColor, size = Size(doneWidth, size.height))
+        }
+        if (progressWidth > 0f) {
+            drawRect(
+                color = inProgressColor,
+                topLeft = Offset(doneWidth, 0f),
+                size = Size(progressWidth, size.height)
+            )
+        }
     }
 }
 

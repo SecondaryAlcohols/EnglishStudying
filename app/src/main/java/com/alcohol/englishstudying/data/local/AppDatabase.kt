@@ -15,9 +15,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ReviewLogEntity::class,
         DeckEntity::class,
         DeckWordEntity::class,
-        WordRelationEntity::class
+        WordRelationEntity::class,
+        UserTagEntity::class,
+        WordUserTagEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -27,6 +29,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun reviewDao(): ReviewDao
     abstract fun deckDao(): DeckDao
     abstract fun relationDao(): WordRelationDao
+
+    abstract fun userTagDao(): UserTagDao
 
     companion object {
         private const val DB_NAME = "english_studying.db"
@@ -100,12 +104,48 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v3 → v4：加用户自定义标签的两张表（`user_tags` / `word_user_tags`）。
+         *
+         * 只建表、不动任何已有数据 —— 用户标签是全新概念，`words.tags`（系统标签）
+         * 保持原样，两个概念从此分开存。
+         *
+         * 建表语句逐字抄自 `app/schemas/…/4.json` 的 createSql（Room 会按它校验），
+         * 改结构时同样对照着改。
+         */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `user_tags` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`name` TEXT NOT NULL, `createdAt` INTEGER NOT NULL)"
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_user_tags_name` " +
+                        "ON `user_tags` (`name`)"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `word_user_tags` (" +
+                        "`wordId` INTEGER NOT NULL, `tagId` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`wordId`, `tagId`), " +
+                        "FOREIGN KEY(`wordId`) REFERENCES `words`(`id`) " +
+                        "ON UPDATE NO ACTION ON DELETE CASCADE , " +
+                        "FOREIGN KEY(`tagId`) REFERENCES `user_tags`(`id`) " +
+                        "ON UPDATE NO ACTION ON DELETE CASCADE )"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_word_user_tags_tagId` " +
+                        "ON `word_user_tags` (`tagId`)"
+                )
+            }
+        }
+
         private fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, DB_NAME)
                 // 声明了 @ForeignKey 后 Room 会在 onOpen 里自动执行 PRAGMA foreign_keys = ON，
                 // 级联删除无需额外配置。
                 .setJournalMode(JournalMode.WRITE_AHEAD_LOGGING)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 // ⚠️ 刻意**不**调用 `fallbackToDestructiveMigration()`，别再把它加回来。
                 //
                 // 它只兜「找不到迁移路径」这一种情况，而且兜得非常"成功"：不崩、不报错、

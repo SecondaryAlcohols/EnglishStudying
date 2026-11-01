@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import com.alcohol.englishstudying.data.local.AppDatabase
 import com.alcohol.englishstudying.data.local.ReviewLogEntity
 import com.alcohol.englishstudying.data.local.ReviewStateEntity
+import com.alcohol.englishstudying.data.local.TodayLogRow
 import com.alcohol.englishstudying.data.local.WordEntity
 import com.alcohol.englishstudying.data.prefs.SettingsRepository
 import com.alcohol.englishstudying.domain.model.WordRelationType
@@ -76,6 +77,13 @@ data class DailyProgress(
      */
     val startedToday: Int = 0,
     /**
+     * 今天点过「模糊」、还没再答对的旧词数。
+     *
+     * 这批卡的排期在第一次模糊时就被定死到未来，既不在到期复习里、也不算已复习 ——
+     * 它们悬在中间，卡片页顶部的进度条把它们画成浅绿（「复习中」）。
+     */
+    val hazyToday: Int = 0,
+    /**
      * 上面那些里今天已经学完的（掌握），含今天重学回 `REVIEW` 的、也含今天标为「太简单」的新词 ——
      * 一眼就会的词本来就不必再学，它和「学了并答对」一样算学完。
      */
@@ -109,6 +117,21 @@ data class DailyProgress(
         val earliest = earliestCoolingDueMinutes ?: return 0
         return (earliest - currentNowMinutes).coerceAtLeast(1L).toInt()
     }
+
+    /**
+     * 「待复习」：今天还发得出来的复习卡 = 到期的天级复习卡（受每日上限剩余额度截断）
+     * + 已经到期的学习步卡。
+     *
+     * 学习步卡是在途的卡，不受复习上限影响；[coolingCount] 是它们里面还没到点的那部分，
+     * 扣掉才是「现在就能做」的。学习首页和卡片页顶部的进度条都用这一个口径，
+     * 免得两处各写一遍、慢慢走偏。
+     */
+    val regularDueToday: Int
+        get() {
+            val learningDue = (learningCount - coolingCount).coerceAtLeast(0)
+            val reviewDue = (dueCount - learningDue).coerceAtLeast(0)
+            return minOf(reviewDue, reviewBudgetRemaining) + learningDue
+        }
 }
 
 data class PracticeSessionResult(
@@ -626,8 +649,14 @@ class StudyRepository(
             )
         }
 
-        return combine(
+        // 单独一档：combine 的强类型重载最多 5 个流，上面那组已经满了
+        val withHazy = combine(
             intermediate2,
+            db.reviewDao().observeHazyCount(startMillis, endMillis, deckId)
+        ) { p, hazy -> p.copy(hazyToday = hazy) }
+
+        return combine(
+            withHazy,
             db.reviewDao().observeCoolingCount(nowMinutes, deckId),
             db.reviewDao().observeEarliestCoolingDueMinutes(nowMinutes, deckId),
             db.reviewDao().observeLearningCount(deckId),
@@ -720,6 +749,12 @@ class StudyRepository(
         return db.reviewDao()
             .hazilyReviewedToday(startMillis, startMillis + MILLIS_PER_DAY, deckId)
             .mapTo(HashSet()) { it.wordId }
+    }
+
+    /** 今天每一次作答的流水（最新在上），学习页「查看日志」弹窗用。 */
+    suspend fun todayLogs(limit: Int = 300): List<TodayLogRow> {
+        val startMillis = todayStartMillis()
+        return db.reviewDao().todayLogs(startMillis, startMillis + MILLIS_PER_DAY, limit)
     }
 
     /** 挂起的卡不在每日队列里，只能在词库里手动恢复。 */

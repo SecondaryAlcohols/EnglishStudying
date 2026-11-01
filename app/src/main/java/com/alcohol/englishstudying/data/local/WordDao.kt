@@ -37,6 +37,30 @@ interface WordDao {
     suspend fun getByIds(ids: List<Long>): List<WordEntity>
 
     /**
+     * 学习页的「搜索单词」弹窗用：词头或释义里包含 [query] 的词，最多 [limit] 条。
+     *
+     * 排序先是「词头以它开头」，再按 COCA 排名（数字小的常用；0 表示查不到，排最后）——
+     * 边打字边出结果时，最想找的那个词得在第一屏。
+     */
+    @Query(
+        """
+        SELECT * FROM words
+        WHERE headword LIKE '%' || :query || '%'
+           OR IFNULL(meanings, '') LIKE '%' || :query || '%'
+        ORDER BY (headword LIKE :query || '%') DESC,
+                 (frequency <= 0) ASC,
+                 frequency ASC,
+                 headword COLLATE NOCASE ASC
+        LIMIT :limit
+        """
+    )
+    suspend fun searchByHeadword(query: String, limit: Int): List<WordEntity>
+
+    /** 只改标签列。用整行 [update] 会连带刷新别的字段，学习中途打标签不该动那些。 */
+    @Query("UPDATE words SET tags = :tags, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun setTags(id: Long, tags: String?, updatedAt: Long)
+
+    /**
      * 词库列表。三个筛选条件都做成可空参数，null / 空串表示不过滤，
      * 这样只需要一条 SQL 就能覆盖所有组合，不用拼字符串。
      */
@@ -46,7 +70,14 @@ interface WordDao {
                s.state AS stateName,
                s.dueAtMinutes AS dueAtMinutes,
                s.intervalDays AS intervalDays,
-               s.lapses AS lapses
+               s.lapses AS lapses,
+               -- 用户标签：按名字拼成逗号串，交给 WordListRow.userTagList 拆。
+               -- 子查询里再排序，GROUP_CONCAT 本身不支持 ORDER BY。
+               (SELECT GROUP_CONCAT(name, ',') FROM (
+                   SELECT t.name AS name FROM word_user_tags wt
+                   JOIN user_tags t ON t.id = wt.tagId
+                   WHERE wt.wordId = w.id
+                   ORDER BY t.name COLLATE NOCASE)) AS userTags
         FROM words w
         LEFT JOIN review_states s ON s.wordId = w.id
         WHERE (:query = ''
@@ -76,6 +107,10 @@ interface WordDao {
           -- 再要求没有 review_states 行：万一某次抽词后进程被杀、标记没来得及清，
           -- 已经学起来的词也不会赖在「优先学」里。
           AND (:priorityOnly = 0 OR (w.priority = 1 AND s.state IS NULL))
+          -- 标签筛选：tagFilter=0 表示没选标签；选了就取并集（任一命中即可），
+          -- 和词表 / 状态之间是「与」。tagIds 在没选时传 [-1] 占位，避免 IN () 语法错。
+          AND (:tagFilter = 0
+               OR w.id IN (SELECT wordId FROM word_user_tags WHERE tagId IN (:tagIds)))
         ORDER BY w.headword COLLATE NOCASE ASC
         """
     )
@@ -83,7 +118,9 @@ interface WordDao {
         query: String,
         deckId: Long?,
         stateFilter: CardState?,
-        priorityOnly: Boolean
+        priorityOnly: Boolean,
+        tagFilter: Int,
+        tagIds: List<Long>
     ): Flow<List<WordListRow>>
 
     @Query(

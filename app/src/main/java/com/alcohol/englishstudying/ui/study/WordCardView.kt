@@ -17,8 +17,10 @@ import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,6 +45,7 @@ import com.alcohol.englishstudying.data.local.WordEntity
 import com.alcohol.englishstudying.domain.model.CardField
 import com.alcohol.englishstudying.domain.model.CardFieldConfig
 import com.alcohol.englishstudying.domain.model.MeaningParser
+import com.alcohol.englishstudying.ui.components.UserTagChip
 import com.alcohol.englishstudying.ui.theme.HeadwordStyle
 import java.time.Instant
 import java.time.LocalDate
@@ -68,6 +71,10 @@ fun WordCardView(
     wordIndex: Map<String, Long> = emptyMap(),
     /** 这个词所属的词表名，供「词表」字段渲染。空列表时该字段不显示。 */
     decks: List<String> = emptyList(),
+    /** 用户自定义标签（易混/写作…）；系统标签在「标签」字段里，两者互不相干。 */
+    userTags: List<String> = emptyList(),
+    /** 非空时在字段下方画一排标签，点它能改；空表示不显示这一块。 */
+    onEditTags: (() -> Unit)? = null,
     onOpenWord: (Long) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -88,6 +95,61 @@ fun WordCardView(
                 onToggle = { overrides[config.field] = !expanded },
                 onOpenWord = onOpenWord
             )
+        }
+        if (onEditTags != null) {
+            Spacer(Modifier.height(18.dp))
+            UserTagsRow(tags = userTags, onEdit = onEditTags)
+        }
+    }
+}
+
+/**
+ * 卡片底部的「我的标签」。
+ *
+ * 和「标签」字段不是一回事：那里是词库自带的系统标签（L0/L1、考研…），只读；
+ * 这里是用户自己打的，点「＋」就能改。没有标签时也留一个「添加标签」的入口 ——
+ * 否则新词永远打不上第一个标签。
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun UserTagsRow(tags: List<String>, onEdit: () -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            "我的标签",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(6.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            tags.forEach { tag -> UserTagChip(tag) }
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.clickable(onClick = onEdit)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Filled.Add,
+                        contentDescription = "编辑标签",
+                        modifier = Modifier.size(13.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (tags.isEmpty()) {
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            "添加标签",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
         }
     }
 }
