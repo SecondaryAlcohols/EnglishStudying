@@ -9,10 +9,11 @@
 范围：level 0-2（level 与真题词频强相关：L0 平均出现 26 次，L3 只有 2.3 次）
 例句：原项目没有单词↔句子关联表，靠 ' word ' 子串匹配现算；这里沿用同一规则并加过滤
 """
-import re, csv, io, collections
+import os, re, csv, io, collections
 
-SRC = r"D:\1ProgramProjects\KotlinProject\EnglishStudying\外部资源\k3y-master\database\k3y.sql"
-DST = r"D:\1ProgramProjects\KotlinProject\EnglishStudying\外部资源\k3y-考研词库-L0-L2.csv"
+HERE = os.path.dirname(os.path.abspath(__file__))
+SRC = os.path.join(HERE, "k3y-master", "database", "k3y.sql")
+DST = os.path.join(HERE, "k3y-考研词库-L0-L2.csv")
 
 # ---- MySQL dump 解析 ----
 

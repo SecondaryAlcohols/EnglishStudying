@@ -3,7 +3,8 @@ import re, sqlite3, os, sys, time
 import urllib.request
 import concurrent.futures
 
-BASE = r"D:/1ProgramProjects/KotlinProject/EnglishStudying"
+# 仓库根目录：脚本所在目录的上一级（不写死本机路径，别人 clone 下来也能跑）
+BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SQL = BASE + "/外部资源/k3y-master/database/k3y.sql"
 DB = BASE + "/外部资源/esdb/english_studying.db"
 OUT = BASE + "/app/src/main/assets/pron"
