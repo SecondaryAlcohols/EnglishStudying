@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>云端词表 · 设计稿</title>
+<style>
+  :root{
+    --primary:#3B5B7A;
+    --primary-soft:#E3EAF1;
+    --teal:#3A6B63;
+    --teal-soft:#DCEBE7;
+    --bg:#F7F7FA;
+    --surface:#FFFFFF;
+    --surface-2:#EEF0F4;
+    --text:#1A1C1E;
+    --text-2:#5B6067;
+    --text-3:#8B9099;
+    --line:#E4E6EB;
+    --amber:#8A5A2B; --amber-bg:#FBF0DF;
+    --danger:#8C3B3B; --danger-bg:#FBE7E7;
+    --green:#2E6B4F; --green-bg:#DFEFE6;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:linear-gradient(180deg,#F2F4F8 0%,#EDEFF5 100%);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding:36px 28px 56px;
+  }
+  .page-head{max-width:960px;margin:0 auto 26px;}
+  .page-head h1{font-size:22px;font-weight:650;margin:0 0 8px;letter-spacing:-.2px;}
+  .page-head p{margin:0 0 6px;color:var(--text-2);font-size:13.5px;line-height:1.75;}
+  .page-head .kbd{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#fff;border:1px solid var(--line);border-radius:6px;padding:1px 5px;}
+
+  .stage{max-width:900px;margin:0 auto;display:flex;flex-wrap:wrap;justify-content:center;gap:34px 40px;align-items:flex-start;}
+  .frame{width:390px;}
+  .frame .cap{margin:12px 2px 0;font-size:12.5px;color:var(--text-2);line-height:1.65;}
+  .frame .cap b{color:var(--text);font-weight:600;display:block;margin-bottom:2px;}
+
+  .phone{
+    position:relative;width:390px;height:844px;background:var(--bg);
+    border-radius:40px;border:1px solid #DDE0E7;
+    box-shadow:0 18px 44px rgba(24,39,58,.12), 0 2px 6px rgba(24,39,58,.05);
+    overflow:hidden;display:flex;flex-direction:column;
+  }
+  .statusbar{height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-size:12px;color:#2B2F35;flex:0 0 auto;}
+  .statusbar .right{display:flex;gap:5px;align-items:center;opacity:.75;}
+
+  .appbar{display:flex;align-items:center;gap:4px;padding:2px 10px 8px 8px;flex:0 0 auto;}
+  .appbar h2{font-size:19px;font-weight:650;margin:0 0 0 4px;flex:1;letter-spacing:-.2px;}
+  .icon-btn{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;color:var(--text-2);flex:0 0 auto;}
+  .icon-btn svg{width:21px;height:21px;fill:currentColor;}
+  .avatar{width:30px;height:30px;border-radius:50%;background:var(--primary);color:#fff;font-size:13px;
+    display:grid;place-items:center;font-weight:600;margin:0 6px;}
+
+  .content{flex:1;overflow:hidden;padding:0;display:flex;flex-direction:column;}
+
+  /* 账号条 */
+  .acct{margin:0 16px 10px;padding:10px 12px;border-radius:14px;background:var(--surface);border:1px solid var(--line);
+    display:flex;align-items:center;gap:10px;}
+  .acct .dot{width:7px;height:7px;border-radius:50%;background:#2FA36B;flex:0 0 auto;}
+  .acct .who{flex:1;min-width:0;}
+  .acct .who .n{font-size:13.5px;font-weight:600;}
+  .acct .who .s{font-size:11.5px;color:var(--text-3);margin-top:1px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .acct .sw{font-size:12.5px;color:var(--primary);padding:5px 9px;border-radius:9px;background:var(--primary-soft);flex:0 0 auto;}
+
+  /* 搜索 */
+  .search{margin:0 16px 10px;height:46px;border-radius:14px;background:var(--surface-2);
+    display:flex;align-items:center;gap:10px;padding:0 14px;color:var(--text-3);font-size:13.5px;}
+  .search svg{width:19px;height:19px;fill:currentColor;opacity:.8;flex:0 0 auto;}
+  .search .txt{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .search .clr{margin-left:auto;width:20px;height:20px;border-radius:50%;background:#C9CED8;
+    display:grid;place-items:center;flex:0 0 auto;}
+  .search .clr svg{width:13px;height:13px;fill:#fff;opacity:1;}
+  .search .mono{font-family:ui-monospace,Menlo,monospace;color:var(--text);letter-spacing:.5px;font-size:13px;}
+
+  /* 分段 */
+  .seg{display:flex;gap:6px;padding:0 16px 10px;flex:0 0 auto;}
+  .seg .it{height:30px;padding:0 12px;border-radius:15px;font-size:12.5px;color:var(--text-2);
+    background:var(--surface);border:1px solid var(--line);display:flex;align-items:center;gap:5px;white-space:nowrap;}
+  .seg .it.on{background:var(--primary);border-color:var(--primary);color:#fff;}
+  .seg .it .n{font-size:11px;opacity:.7;}
+
+  /* 词表卡片 */
+  .list{flex:1;overflow:hidden;padding:0 12px;display:flex;flex-direction:column;gap:8px;
+    -webkit-mask-image:linear-gradient(180deg,#000 94%,transparent 100%);mask-image:linear-gradient(180deg,#000 94%,transparent 100%);}
+  .deck{background:var(--surface);border-radius:16px;border:1px solid transparent;overflow:hidden;}
+  .deck.hit{border-color:var(--primary);border-width:1.5px;box-shadow:0 0 0 3px rgba(59,91,122,.14);}
+  .deck-top{display:flex;align-items:flex-start;gap:10px;padding:13px 14px;}
+  .deck-top .main{flex:1;min-width:0;}
+  .deck-name{font-size:15px;font-weight:620;letter-spacing:-.1px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .badge{font-size:10.5px;font-weight:500;padding:2px 6px;border-radius:5px;line-height:1.3;}
+  .badge.official{color:var(--primary);background:var(--primary-soft);}
+  .badge.pub{color:var(--green);background:var(--green-bg);}
+  .badge.priv{color:var(--text-3);background:var(--surface-2);}
+  .deck-meta{font-size:12px;color:var(--text-3);margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .deck-meta .sep{width:1px;height:10px;background:var(--line);}
+  .chev{width:26px;height:26px;display:grid;place-items:center;color:var(--text-3);flex:0 0 auto;margin-top:2px;}
+  .chev svg{width:18px;height:18px;fill:currentColor;}
+  .local{font-size:11px;color:var(--teal);background:var(--teal-soft);border-radius:5px;padding:1px 6px;}
+
+  .deck-body{border-top:1px solid var(--line);padding:12px 14px 13px;background:#FCFCFD;}
+  .desc{font-size:12.5px;color:var(--text-2);line-height:1.65;margin:0 0 10px;}
+  .lbl{font-size:11.5px;color:var(--text-3);margin:0 0 6px;letter-spacing:.2px;}
+  .prev{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;}
+  .pv{font-size:11.5px;color:var(--text-2);background:var(--surface);border:1px solid var(--line);
+    border-radius:7px;padding:3px 7px;}
+  .pv.more{color:var(--text-3);border-style:dashed;}
+
+  .acts{display:flex;gap:8px;flex-wrap:wrap;}
+  .btn{height:36px;padding:0 13px;border-radius:11px;font-size:13px;display:inline-flex;align-items:center;gap:6px;
+    background:var(--surface);border:1px solid var(--line);color:var(--text);}
+  .btn svg{width:15px;height:15px;fill:currentColor;opacity:.75;}
+  .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff;}
+  .btn.primary svg{opacity:.95;}
+  .btn.soft{background:var(--primary-soft);border-color:transparent;color:var(--primary);}
+  .btn.danger{color:var(--danger);background:var(--danger-bg);border-color:transparent;}
+  .btn.wide{flex:1;justify-content:center;}
+
+  /* 字段行（我的词表展开） */
+  .field{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line);}
+  .field:last-of-type{border-bottom:none;}
+  .field .k{width:52px;font-size:12.5px;color:var(--text-3);flex:0 0 auto;}
+  .field .v{flex:1;font-size:13.5px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .field .v.ph{color:var(--text-3);}
+  .field .pen{color:var(--text-3);font-size:12.5px;flex:0 0 auto;}
+
+  /* 可见性切换 */
+  .vis{display:flex;background:#E8EBF1;border-radius:11px;padding:3px;gap:3px;flex:1;}
+  .vis .opt{flex:1;height:28px;border-radius:9px;display:grid;place-items:center;font-size:12px;
+    color:var(--text-2);white-space:nowrap;}
+  .vis .opt.on{background:var(--primary);color:#fff;font-weight:600;}
+
+  /* 分享码 */
+  .codecard{margin-top:10px;background:var(--surface);border:1px dashed #C8D2DE;border-radius:12px;padding:10px 12px;}
+  .codecard .top{display:flex;align-items:center;gap:8px;}
+  .codecard .tag{font-size:11px;color:var(--text-3);}
+  .codecard .code{font-family:ui-monospace,Menlo,monospace;font-size:16px;letter-spacing:1.5px;color:var(--primary);font-weight:600;}
+  .codecard .cp{margin-left:auto;font-size:12px;color:var(--primary);background:var(--primary-soft);border-radius:8px;padding:4px 9px;}
+  .codecard .hint{margin-top:6px;font-size:11px;color:var(--text-3);line-height:1.55;}
+
+  .subhead{display:flex;align-items:center;justify-content:space-between;margin:14px 0 8px;}
+  .subhead .t{font-size:11.5px;color:var(--text-3);letter-spacing:.2px;}
+  .subhead .a{font-size:12px;color:var(--primary);}
+
+  .dangerline{margin-top:12px;display:flex;gap:8px;}
+
+  /* 命中提示条 */
+  .banner{margin:0 16px 10px;padding:10px 12px;border-radius:12px;background:var(--primary-soft);
+    display:flex;gap:9px;align-items:center;font-size:12.5px;color:var(--primary);}
+  .banner svg{width:17px;height:17px;fill:currentColor;flex:0 0 auto;}
+  .banner b{font-weight:600;}
+
+  .emptyhint{margin:10px 2px 0;padding:14px 13px;border-radius:12px;background:#FFF9EA;border:1px solid #F1E3BE;
+    font-size:12px;color:#6B5A2E;line-height:1.7;}
+  .emptyhint b{display:block;margin-bottom:3px;}
+
+  /* 底部弹层 */
+  .scrim{position:absolute;inset:0;background:rgba(20,24,30,.34);}
+  .sheet{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:26px 26px 0 0;
+    padding:10px 18px 18px;box-shadow:0 -12px 40px rgba(0,0,0,.18);}
+  .grab{width:38px;height:4px;border-radius:2px;background:#D7DBE3;margin:2px auto 14px;}
+  .sheet h3{margin:0 0 4px;font-size:17px;font-weight:650;}
+  .sheet .sub{margin:0 0 14px;font-size:12px;color:var(--text-3);line-height:1.6;}
+  .input{height:44px;border-radius:12px;background:var(--surface-2);display:flex;align-items:center;
+    padding:0 13px;font-size:14px;color:var(--text);}
+  .input.ph{color:var(--text-3);font-size:13.5px;}
+  .input.small{height:38px;font-size:13px;color:var(--text-3);}
+  .sheet .row2{display:flex;gap:10px;align-items:center;margin-top:8px;}
+  .sheet .row2 .k{font-size:12.5px;color:var(--text-3);width:52px;flex:0 0 auto;}
+
+  .pick{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);
+    background:var(--surface);margin-bottom:8px;}
+  .pick.on{border-color:var(--primary);background:#F6F9FC;box-shadow:0 0 0 2px rgba(59,91,122,.10);}
+  .pick .info{flex:1;min-width:0;}
+  .pick .nm{font-size:13.5px;font-weight:550;display:flex;gap:6px;align-items:center;}
+  .pick .mt{font-size:11.5px;color:var(--text-3);margin-top:2px;}
+  .radio{width:20px;height:20px;border-radius:50%;border:1.5px solid #C3C9D3;flex:0 0 auto;display:grid;place-items:center;}
+  .radio.on{border-color:var(--primary);background:var(--primary);}
+  .radio.on::after{content:"";width:7px;height:7px;border-radius:50%;background:#fff;}
+
+  .seg2{display:flex;background:#E8EBF1;border-radius:11px;padding:3px;gap:3px;margin-top:2px;flex:1;}
+  .seg2 .opt{flex:1;height:32px;border-radius:9px;display:grid;place-items:center;font-size:12px;
+    color:var(--text-2);white-space:nowrap;padding:0 2px;}
+  .seg2 .opt.on{background:var(--primary);color:#fff;font-weight:600;}
+
+  .sheetacts{display:flex;gap:10px;margin-top:14px;}
+  .sheetacts .btn{height:44px;font-size:14px;border-radius:13px;}
+
+  /* 说明区 */
+  .notes{max-width:900px;margin:44px auto 0;display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  .note{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px 18px;}
+  .note h4{margin:0 0 8px;font-size:13.5px;font-weight:650;display:flex;align-items:center;gap:7px;}
+  .note h4 .no{width:19px;height:19px;border-radius:50%;background:var(--primary);color:#fff;font-size:11px;
+    display:grid;place-items:center;font-weight:600;flex:0 0 auto;}
+  .note p,.note li{font-size:12.5px;color:var(--text-2);line-height:1.72;margin:0;}
+  .note ul{margin:0;padding-left:17px;}
+  .note li{margin-bottom:5px;}
+  .note code{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;background:var(--surface-2);
+    border-radius:4px;padding:1px 4px;}
+  .note .q{color:var(--text);font-weight:600;}
+  .note.wide{grid-column:span 2;}
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>云端词表 · 设计稿</h1>
+  <p>目标：把「云图标 → 弹窗 → 只能下载」换成 <b>一整页</b>，词表的改、导、公开、查找全部在这页里完成。</p>
+  <p>交互原则：<b>卡片就地展开</b>（手风琴，一次只展开一张），不跳页、不弹对话框；只有「新建 / 导入」这种带表单的才用底部弹层。</p>
+</div>
+
+<div class="stage">
+
+  <!-- ① 主页 -->
+  <div class="frame">
+    <div class="phone">
+      <div class="statusbar"><span>14:26</span><span class="right">▮▮▮ ⌁ 92</span></div>
+      <div class="appbar">
+        <div class="icon-btn"><svg viewBox="0 0 24 24"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z"/></svg></div>
+        <h2>云端词表</h2>
+        <div class="icon-btn"><svg viewBox="0 0 24 24"><path d="M12 5V2L8 6l4 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg></div>
+                <div class="icon-btn"><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></svg></div>
+        <div class="avatar">t</div>
+      </div>
+
+      <div class="content">
+        <div class="acct">
+          <span class="dot"></span>
+          <div class="who">
+            <div class="n">t_admin</div>
+            <div class="s">127.0.0.1:8000 · 已连接 · 4 张词表</div>
+          </div>
+          <div class="sw">切换</div>
+        </div>
+
+        <div class="search">
+          <svg viewBox="0 0 24 24"><path d="M15.5 14h-.8l-.3-.3a6.5 6.5 0 1 0-.7.7l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
+          <span class="txt">搜词表名，或粘贴分享码 K7Q2-9F3M</span>
+        </div>
+
+        <div class="seg">
+          <div class="it on">全部 <span class="n">4</span></div>
+          <div class="it">官方 <span class="n">2</span></div>
+          <div class="it">公开 <span class="n">1</span></div>
+          <div class="it">我的 <span class="n">1</span></div>
+        </div>
+
+        <div class="list">
+          <div class="deck">
+            <div class="deck-top">
+              <div class="main">
+                <div class="deck-name">考研5500 <span class="badge official">官方</span></div>
+                <div class="deck-meta">
+                  <span>5241 词</span><span class="sep"></span><span>更新 11-01</span>
+                  <span class="local">已在本机</span>
+                </div>
+              </div>
+              <div class="chev"><svg viewBox="0 0 24 24"><path d="M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z"/></svg></div>
+            </div>
+          </div>
+
+          <div class="deck">
+            <div class="deck-top">
+              <div class="main">
+                <div class="deck-name">考研大纲 L3 <span class="badge official">官方</span></div>
+                <div class="deck-meta"><span>3461 词</span><span class="sep"></span><span>更新 10-27</span></div>
+              </div>
+              <div class="chev"><svg viewBox="0 0 24 24"><path d="M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z"/></svg></div>
+            </div>
+          </div>
+
+          <div class="deck">
+            <div class="deck-top">
+              <div class="main">
+                <div class="deck-name">写作高频词 <span class="badge pub">公开</span></div>
+                <div class="deck-meta">
+                  <span>320 词</span><span class="sep"></span><span>by 张伟</span><span class="sep"></span>
+                  <span style="font-family:ui-monospace,Menlo,monospace;letter-spacing:.6px">K7Q2-9F3M</span>
+                </div>
+              </div>
+              <div class="chev"><svg viewBox="0 0 24 24"><path d="M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z"/></svg></div>
+            </div>
+          </div>
+
+          <div class="deck">
+            <div class="deck-top">
+              <div class="main">
+                <div class="deck-name">我的生词本 <span class="badge priv">私有</span></div>
+                <div class="deck-meta"><span>128 词</span><span class="sep"></span><span>仅自己可见</span></div>
+              </div>
+              <div class="chev"><svg viewBox="0 0 24 24"><path d="M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z"/></svg></div>
+            </div>
+          </div>
+
+          <div class="deck">
+            <div class="deck-top">
+              <div class="main">
+                <div class="deck-name">考研核心 2020 <span class="badge pub">公开</span></div>
+                <div class="deck-meta">
+                  <span>1500 词</span><span class="sep"></span><span>by 李明</span><span class="sep"></span>
+                  <span style="font-family:ui-monospace,Menlo,monospace;letter-spacing:.6px">P3RD-7XK9</span>
+                </div>
+              </div>
+              <div class="chev"><svg viewBox="0 0 24 24"><path d="M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z"/></svg></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>① 云端词表（新页面）</b>点词库页的云图标进来。顶部账号条一直可见，退出 / 切换账号不再藏起来；下面是搜索、四段筛选、词表卡片。</div>
+  </div>
+
+  <!-- ② 展开官方词表 -->
+  <div class="frame">
+    <div class="phone">
+      <div class="statusbar"><span>14:26</span><span class="right">▮▮▮ ⌁ 92</span></div>
+      <div class="appbar">
+        <div class="icon-btn"><svg viewBox="0 0 24 24"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z"/></svg></div>
+        <h2>云端词表</h2>
+        <div class="icon-btn"><svg viewBox="0 0 24 24"><path d="M12 5V2L8 6l4 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg></div>
+                <div class="icon-btn"><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></svg></div>
+        <div class="avatar">t</div>
+      </div>
+
+      <div class="content">
+        <div class="acct">
+          <span class="dot"></span>
+          <div class="who">
+            <div class="n">t_admin</div>
+            <div class="s">127.0.0.1:8000 · 已连接 · 4 张词表</div>
+          </div>
+          <div class="sw">切换</div>
+        </div>
+
+        <div class="search">
+          <svg viewBox="0 0 24 24"><path d="M15.5 14h-.8l-.3-.3a6.5 6.5 0 1 0-.7.7l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
+          <span class="txt">搜词表名，或粘贴分享码 K7Q2-9F3M</span>
+        </div>
+
+        <div class="seg">
+          <div class="it on">全部 <span class="n">4</span></div>
+          <div class="it">官方 <span class="n">2</span></div>
+          <div class="it">公开 <span class="n">1</span></div>
+          <div class="it">我的 <span class="n">1</span></div>
+        </div>
+
+        <div class="list">
+          <div class="deck">
+            <div class="deck-top">
+              <div class="main">
+                <div class="deck-name">考研5500 <span class="badge official">官方</span></div>
+                <div class="deck-meta">
+                  <span>5241 词</span><span class="sep"></span><span>更新 11-01</span>
+                  <span class="local">已在本机</span>
+                </div>
+              </div>
+              <div class="chev"><svg viewBox="0 0 24 24"><path d="M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z"/></svg></div>
+            </div>
+            <div class="deck-body">
+              <p class="desc">考研大纲 5500 全量词表，含音标、词性、释义、词根与变形，按 COCA 词频排序。</p>
+              <div class="lbl">前 6 个词</div>
+              <div class="prev">
+                <span class="pv">be</span><span class="pv">have</span><span class="pv">do</span>
+                <span class="pv">say</span><span class="pv">get</span><span class="pv">make</span>
+                <span class="pv more">+5235</span>
+              </div>
+              <div class="acts">
+                <div class="btn primary wide">
+                  <svg viewBox="0 0 24 24"><path d="M12 3v10.6l3.3-3.3 1.4 1.4L12 17.4l-4.7-4.7 1.4-1.4L12 13.6V3h0zM5 19h14v2H5z"/></svg>
+                  下载到本机
+                </div>
+                <div class="btn soft">
+                  <svg viewBox="0 0 24 24"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/></svg>
+                  复制一份
+                </div>
+              </div>
+              <div class="codecard" style="border-style:solid;border-color:#E4E6EB;background:#fff">
+                <div class="top">
+                  <span class="tag">官方词表只能下载或复制，不能修改</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="deck">
+            <div class="deck-top">
+              <div class="main">
+                <div class="deck-name">考研大纲 L3 <span class="badge official">官方</span></div>
+                <div class="deck-meta"><span>3461 词</span><span class="sep"></span><span>更新 10-27</span></div>
+              </div>
+              <div class="chev"><svg viewBox="0 0 24 24"><path d="M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z"/></svg></div>
+            </div>
+          </div>
+
+          <div class="deck">
+            <div class="deck-top">
+              <div class="main">
+                <div class="deck-name">写作高频词 <span class="badge pub">公开</span></div>
+                <div class="deck-meta">
+                  <span>320 词</span><span class="sep"></span><span>by 张伟</span><span class="sep"></span>
+                  <span style="font-family:ui-monospace,Menlo,monospace;letter-spacing:.6px">K7Q2-9F3M</span>
+                </div>
+              </div>
+              <div class="chev"><svg viewBox="0 0 24 24"><path d="M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z"/></svg></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>② 展开一张官方词表</b>点整行就地展开，露出简介、前几个词和操作。官方表只有「下载」和「复制一份」，右侧不再放删除 / 改名。</div>
+  </div>
+
+  <!-- ③ 展开我的词表 -->
+  <div class="frame">
+    <div class="phone">
+      <div class="statusbar"><span>14:26</span><span class="right">▮▮▮ ⌁ 92</span></div>
+      <div class="appbar">
+        <div class="icon-btn"><svg viewBox="0 0 24 24"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z"/></svg></div>
+        <h2>云端词表</h2>
+        <div class="icon-btn"><svg viewBox="0 0 24 24"><path d="M12 5V2L8 6l4 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg></div>
+                <div class="icon-btn"><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></svg></div>
+        <div class="avatar">t</div>
+      </div>
+
+      <div class="content">
+        <div class="acct">
+          <span class="dot"></span>
+          <div class="who">
+            <div class="n">t_admin</div>
+            <div class="s">127.0.0.1:8000 · 已连接 · 4 张词表</div>
+          </div>
+          <div class="sw">切换</div>
+        </div>
+
+        <div class="seg">
+          <div class="it">全部 <span class="n">4</span></div>
+          <div class="it">官方 <span class="n">2</span></div>
+          <div class="it">公开 <span class="n">1</span></div>
+          <div class="it on">我的 <span class="n">1</span></div>
+        </div>
+
+        <div class="list">
+          <div class="deck">
+            <div class="deck-top">
+              <div class="main">
+                <div class="deck-name">我的生词本 <span class="badge pub">公开</span></div>
+                <div class="deck-meta"><span>128 词</span><span class="sep"></span><span>我在维护</span></div>
+              </div>
+              <div class="chev"><svg viewBox="0 0 24 24"><path d="M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z"/></svg></div>
+            </div>
+
+            <div class="deck-body" style="padding-top:6px">
+              <div class="field">
+                <span class="k">名称</span>
+                <span class="v">我的生词本</span>
+                <span class="pen">改名</span>
+              </div>
+              <div class="field">
+                <span class="k">简介</span>
+                <span class="v ph">加一句说明，别人搜到时能看到</span>
+                <span class="pen">编辑</span>
+              </div>
+              <div class="field">
+                <span class="k">可见性</span>
+                <div class="vis">
+                  <div class="opt">私有</div>
+                  <div class="opt on">公开</div>
+                </div>
+              </div>
+
+              <div class="codecard">
+                <div class="top">
+                  <span class="tag">分享码</span>
+                  <span class="code">K7Q2-9F3M</span>
+                  <span class="cp">复制</span>
+                </div>
+                <div class="hint">别人在搜索框粘贴这串码就能直接打开。点「重置」旧码立即失效。</div>
+                <div style="display:flex;gap:8px;margin-top:8px">
+                  <div class="btn" style="height:30px;font-size:12px;padding:0 10px">复制链接</div>
+                  <div class="btn" style="height:30px;font-size:12px;padding:0 10px">重置分享码</div>
+                </div>
+              </div>
+
+              <div class="subhead">
+                <span class="t">内容</span>
+                <span class="a">查看全部 128 词 ›</span>
+              </div>
+              <div class="acts">
+                <div class="btn"><svg viewBox="0 0 24 24"><path d="M12 3v10.6l3.3-3.3 1.4 1.4L12 17.4l-4.7-4.7 1.4-1.4L12 13.6V3zM5 19h14v2H5z"/></svg>导出 CSV</div>
+                <div class="btn"><svg viewBox="0 0 24 24"><path d="M12 3v10.6l3.3-3.3 1.4 1.4L12 17.4l-4.7-4.7 1.4-1.4L12 13.6V3zM5 19h14v2H5z" transform="rotate(180 12 12)"/></svg>上传 CSV</div>
+                <div class="btn soft"><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></svg>从其他词表导入</div>
+              </div>
+
+              <div class="dangerline">
+                <div class="btn danger wide">删除这张词表</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="deck">
+            <div class="deck-top">
+              <div class="main">
+                <div class="deck-name">考研5500 <span class="badge official">官方</span></div>
+                <div class="deck-meta"><span>5241 词</span><span class="sep"></span><span>已在本机</span></div>
+              </div>
+              <div class="chev"><svg viewBox="0 0 24 24"><path d="M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z"/></svg></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>③ 展开我自己的词表</b>改名、简介、可见性、分享码、导出 / 上传 / 从别的表导入、删除，全在这一块里。切到「公开」分享码才出现。</div>
+  </div>
+
+  <!-- ④ 分享码命中 -->
+  <div class="frame">
+    <div class="phone">
+      <div class="statusbar"><span>14:27</span><span class="right">▮▮▮ ⌁ 92</span></div>
+      <div class="appbar">
+        <div class="icon-btn"><svg viewBox="0 0 24 24"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z"/></svg></div>
+        <h2>云端词表</h2>
+        <div class="icon-btn"><svg viewBox="0 0 24 24"><path d="M12 5V2L8 6l4 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg></div>
+                <div class="icon-btn"><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></svg></div>
+        <div class="avatar">t</div>
+      </div>
+
+      <div class="content">
+        <div class="acct">
+          <span class="dot"></span>
+          <div class="who">
+            <div class="n">t_admin</div>
+            <div class="s">127.0.0.1:8000 · 已连接 · 4 张词表</div>
+          </div>
+          <div class="sw">切换</div>
+        </div>
+
+        <div class="search" style="border:1px solid var(--primary);background:#fff">
+          <svg viewBox="0 0 24 24" style="fill:var(--primary)"><path d="M15.5 14h-.8l-.3-.3a6.5 6.5 0 1 0-.7.7l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
+          <span class="txt mono">K7Q2-9F3M</span>
+          <span class="clr"><svg viewBox="0 0 24 24"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/></svg></span>
+        </div>
+
+        <div class="banner">
+          <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-2h2zm0-4h-2V7h2z"/></svg>
+          <span><b>分享码直达</b> · 已定位到 1 张词表</span>
+        </div>
+
+        <div class="list">
+          <div class="deck hit">
+            <div class="deck-top">
+              <div class="main">
+                <div class="deck-name">写作高频词 <span class="badge pub">公开</span></div>
+                <div class="deck-meta">
+                  <span>320 词</span><span class="sep"></span><span>by 张伟</span><span class="sep"></span>
+                  <span>更新 11-03</span>
+                </div>
+              </div>
+              <div class="chev"><svg viewBox="0 0 24 24"><path d="M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z"/></svg></div>
+            </div>
+            <div class="deck-body">
+              <p class="desc">考研英语一写作常用替换词，含搭配与例句，适合冲刺阶段替换低级表达。</p>
+              <div class="lbl">前 6 个词</div>
+              <div class="prev">
+                <span class="pv">crucial</span><span class="pv">vital</span><span class="pv">demonstrate</span>
+                <span class="pv">illustrate</span><span class="pv">phenomenon</span><span class="pv">substantial</span>
+                <span class="pv more">+314</span>
+              </div>
+              <div class="acts">
+                <div class="btn primary wide">
+                  <svg viewBox="0 0 24 24"><path d="M12 3v10.6l3.3-3.3 1.4 1.4L12 17.4l-4.7-4.7 1.4-1.4L12 13.6V3zM5 19h14v2H5z"/></svg>
+                  下载到本机
+                </div>
+                <div class="btn">复制一份</div>
+              </div>
+            </div>
+          </div>
+          <div class="emptyhint">
+            <b>没搜到？</b>
+            分享码是 8 位（显示成 4-4），只含数字和字母、不含 I / L / O / U。也可能是对方把它改回「私有」了。
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>④ 分享码直达</b>搜索框认两种输入：文字就按名字/作者搜，8 位码就直接定位。命中后卡片高亮并自动展开。</div>
+  </div>
+
+  <!-- ⑤ 新建词表 -->
+  <div class="frame">
+    <div class="phone">
+      <div class="statusbar"><span>14:28</span><span class="right">▮▮▮ ⌁ 92</span></div>
+      <div class="appbar">
+        <div class="icon-btn"><svg viewBox="0 0 24 24"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z"/></svg></div>
+        <h2>云端词表</h2>
+        <div class="icon-btn"><svg viewBox="0 0 24 24"><path d="M12 5V2L8 6l4 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg></div>
+        <div class="icon-btn" style="background:var(--primary-soft);color:var(--primary)"><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></svg></div>
+        <div class="avatar">t</div>
+      </div>
+
+      <div class="content">
+        <div class="acct">
+          <span class="dot"></span>
+          <div class="who">
+            <div class="n">t_admin</div>
+            <div class="s">127.0.0.1:8000 · 已连接 · 4 张词表</div>
+          </div>
+          <div class="sw">切换</div>
+        </div>
+
+        <div class="search">
+          <svg viewBox="0 0 24 24"><path d="M15.5 14h-.8l-.3-.3a6.5 6.5 0 1 0-.7.7l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
+          <span class="txt">搜词表名，或粘贴分享码 K7Q2-9F3M</span>
+        </div>
+
+        <div class="seg">
+          <div class="it on">全部 <span class="n">4</span></div>
+          <div class="it">官方 <span class="n">2</span></div>
+          <div class="it">公开 <span class="n">1</span></div>
+          <div class="it">我的 <span class="n">1</span></div>
+        </div>
+
+        <div class="list">
+          <div class="deck">
+            <div class="deck-top">
+              <div class="main">
+                <div class="deck-name">考研5500 <span class="badge official">官方</span></div>
+                <div class="deck-meta"><span>5241 词</span><span class="sep"></span><span>已在本机</span></div>
+              </div>
+              <div class="chev"><svg viewBox="0 0 24 24"><path d="M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z"/></svg></div>
+            </div>
+          </div>
+          <div class="deck">
+            <div class="deck-top">
+              <div class="main">
+                <div class="deck-name">我的生词本 <span class="badge priv">私有</span></div>
+                <div class="deck-meta"><span>128 词</span><span class="sep"></span><span>仅自己可见</span></div>
+              </div>
+              <div class="chev"><svg viewBox="0 0 24 24"><path d="M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z"/></svg></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="scrim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <h3>新建词表</h3>
+        <p class="sub">建好后可以随时改名、改可见性，或者继续往里加词。</p>
+
+        <div class="input">考研冲刺 30 天</div>
+        <div class="input ph" style="margin-top:8px">简介（可选，别人搜到时能看到）</div>
+
+        <div class="row2">
+          <span class="k">可见性</span>
+          <div class="seg2">
+            <div class="opt on">私有</div>
+            <div class="opt">公开</div>
+          </div>
+        </div>
+
+        <div class="row2" style="margin-top:14px">
+          <span class="k">初始内容</span>
+          <div class="seg2">
+            <div class="opt">空白</div>
+            <div class="opt on">复制现有</div>
+            <div class="opt">上传文件</div>
+          </div>
+        </div>
+
+        <div style="margin-top:10px">
+          <div class="pick on">
+            <div class="info">
+              <div class="nm">考研5500 <span class="badge official">官方</span></div>
+              <div class="mt">5241 词 · 复制后是独立的一份，改它不影响原表</div>
+            </div>
+            <div class="radio on"></div>
+          </div>
+          <div class="pick">
+            <div class="info">
+              <div class="nm">考研大纲 L3 <span class="badge official">官方</span></div>
+              <div class="mt">3461 词</div>
+            </div>
+            <div class="radio"></div>
+          </div>
+        </div>
+
+        <div class="sheetacts">
+          <div class="btn wide">取消</div>
+          <div class="btn primary wide">创建</div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>⑤ 新建词表</b>三件事一次定：名字、是否公开、初始内容。「复制现有」等于从任意一张可见词表 fork 一份，之后各改各的。</div>
+  </div>
+
+  <!-- ⑥ 从其他词表导入 -->
+  <div class="frame">
+    <div class="phone">
+      <div class="statusbar"><span>14:29</span><span class="right">▮▮▮ ⌁ 92</span></div>
+      <div class="appbar">
+        <div class="icon-btn"><svg viewBox="0 0 24 24"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z"/></svg></div>
+        <h2>云端词表</h2>
+        <div class="icon-btn"><svg viewBox="0 0 24 24"><path d="M12 5V2L8 6l4 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg></div>
+                <div class="icon-btn"><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></svg></div>
+        <div class="avatar">t</div>
+      </div>
+
+      <div class="content">
+        <div class="acct">
+          <span class="dot"></span>
+          <div class="who">
+            <div class="n">t_admin</div>
+            <div class="s">127.0.0.1:8000 · 已连接 · 4 张词表</div>
+          </div>
+          <div class="sw">切换</div>
+        </div>
+
+        <div class="list">
+          <div class="deck">
+            <div class="deck-top">
+              <div class="main">
+                <div class="deck-name">我的生词本 <span class="badge priv">私有</span></div>
+                <div class="deck-meta"><span>128 词</span><span class="sep"></span><span>仅自己可见</span></div>
+              </div>
+              <div class="chev"><svg viewBox="0 0 24 24"><path d="M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z"/></svg></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="scrim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <h3>导入到「我的生词本」</h3>
+        <p class="sub">先选来源，再决定是替换还是追加。</p>
+
+        <div class="input small" style="margin-bottom:10px">
+          <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor;margin-right:8px;opacity:.8"><path d="M15.5 14h-.8l-.3-.3a6.5 6.5 0 1 0-.7.7l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
+          搜词表名，或粘贴分享码
+        </div>
+
+        <div class="pick">
+          <div class="info">
+            <div class="nm">考研5500 <span class="badge official">官方</span></div>
+            <div class="mt">5241 词 · 官方维护</div>
+          </div>
+          <div class="radio"></div>
+        </div>
+        <div class="pick on">
+          <div class="info">
+            <div class="nm">写作高频词 <span class="badge pub">公开</span></div>
+            <div class="mt">320 词 · by 张伟 · K7Q2-9F3M</div>
+          </div>
+          <div class="radio on"></div>
+        </div>
+        <div class="pick">
+          <div class="info">
+            <div class="nm">考研大纲 L3 <span class="badge official">官方</span></div>
+            <div class="mt">3461 词</div>
+          </div>
+          <div class="radio"></div>
+        </div>
+
+        <div class="row2" style="margin-top:12px">
+          <span class="k">方式</span>
+          <div class="seg2">
+            <div class="opt">替换现有</div>
+            <div class="opt on">追加合并</div>
+          </div>
+        </div>
+        <p class="sub" style="margin:8px 0 0">追加时按词头去重，已有的词不会重复，也不改学习进度。</p>
+
+        <div class="sheetacts">
+          <div class="btn wide">取消</div>
+          <div class="btn primary wide">导入 320 词</div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>⑥ 从其他词表导入</b>只动「挂载关系」：把对方的词挂到我这表上，不复制词条本身。替换 / 追加二选一。</div>
+  </div>
+
+</div>
+
+<div class="notes">
+  <div class="note">
+    <h4><span class="no">1</span>数据结构要加三个字段</h4>
+    <ul>
+      <li><code>decks.visibility</code> —— <code>private</code> / <code>public</code>；官方仍用 <code>owner_id IS NULL</code> 判定，不混进可见性。</li>
+      <li><code>decks.share_code</code> —— 8 位，唯一索引；为空表示还没生成过。</li>
+      <li><code>decks.source_deck_id</code> —— fork 来源，用于「复制自《考研5500》」这种标注，可空。</li>
+    </ul>
+  </div>
+
+  <div class="note">
+    <h4><span class="no">2</span>接口增减</h4>
+    <ul>
+      <li><code>GET /api/decks?scope=all|official|public|mine&amp;q=</code> —— 一次拿完，带 <code>shareCode</code>、<code>owner</code>、<code>wordCount</code>、<code>alreadyLocal</code>。</li>
+      <li><code>GET /api/decks/by-code/{code}</code> —— 分享码直达。</li>
+      <li><code>PATCH /api/decks/{id}</code> —— 放开 <code>description</code> + <code>visibility</code>。</li>
+      <li><code>POST /api/decks/{id}/share-code/reset</code>、<code>POST /api/decks/{id}/import-from</code>（<code>sourceId</code> + <code>mode=replace|append</code>）。</li>
+      <li><code>POST /api/decks</code> 增加 <code>seedFromDeckId</code>、<code>visibility</code>。</li>
+    </ul>
+  </div>
+
+  <div class="note">
+    <h4><span class="no">3</span>分享码规则</h4>
+    <p>8 位 Crockford Base32（去掉 <code>I L O U</code>，避免 1/l、0/O 认错），显示成 <code>XXXX-XXXX</code>。
+       生成时排除已用的码；重置后旧码立刻失效。公开词表才有码，改回私有时代码保留但不可用。</p>
+  </div>
+
+  <div class="note">
+    <h4><span class="no">4</span>权限边界不变</h4>
+    <p>官方词表：所有人读，仅管理员写。公开词表：任何登录用户可读、可下载、可复制，<b>不能改</b>。
+       私有词表：仅本人。别人的私有表依旧返回 404。上传 CSV 仍只写自己的 <code>user_words</code>。</p>
+  </div>
+
+  <div class="note wide">
+    <h4><span class="no">5</span>要你拍板的三件事</h4>
+    <ul>
+      <li><span class="q">公开词表要不要允许未登录访问分享码？</span> —— 目前所有词表接口都要令牌，我倾向保持「必须登录」，分享码只解决"找不到"的问题。</li>
+      <li><span class="q">「从其他词表导入」是复制词条还是只挂载？</span> —— 设计稿按<b>只挂载</b>画（省空间，对方的词更新我这边跟着变）；如果你希望"独立一份、各自改"，那就改成复制到 <code>user_words</code>。</li>
+      <li><span class="q">分享码能不能自定义？</span> —— 比如给自己这张表起个 <code>WRITING-01</code>。可以，但要额外校验唯一性与敏感词。</li>
+    </ul>
+  </div>
+</div>
+
+</body>
+</html>

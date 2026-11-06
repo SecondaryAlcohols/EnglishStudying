@@ -36,6 +36,9 @@ import com.alcohol.englishstudying.ui.library.LibraryScreen
 import com.alcohol.englishstudying.ui.settings.CardFieldSettingsScreen
 import com.alcohol.englishstudying.ui.settings.SettingsScreen
 import com.alcohol.englishstudying.ui.stats.StatsScreen
+import com.alcohol.englishstudying.ui.remote.MyDeckDetailScreen
+import com.alcohol.englishstudying.ui.remote.CloudDecksScreen
+import com.alcohol.englishstudying.ui.remote.ServerScreen
 import com.alcohol.englishstudying.ui.tags.TagScreen
 import com.alcohol.englishstudying.ui.study.StudyHomeScreen
 import com.alcohol.englishstudying.ui.study.StudyScreen
@@ -59,6 +62,12 @@ object Routes {
     const val STATS = "stats"
     const val CARD_FIELDS = "card_fields"
     const val TAGS = "tags"
+    const val SERVER = "server"
+    const val CLOUD_DECKS = "cloud_decks"
+    const val ARG_DECK_ID = "deckId"
+    const val MY_DECK = "my_deck/{$ARG_DECK_ID}"
+
+    fun myDeck(deckId: Long): String = "my_deck/$deckId"
 
     const val WORD_EDIT = "word_edit"
     const val ARG_WORD_ID = "wordId"
@@ -207,12 +216,35 @@ fun AppNavHost(
                     onOpenImport = { navController.navigate(Routes.IMPORT) },
                     onOpenDecks = { navController.navigate(Routes.DECKS) },
                     onOpenStats = { navController.navigate(Routes.STATS) },
-                    onOpenTags = { navController.navigate(Routes.TAGS) }
+                    onOpenTags = { navController.navigate(Routes.TAGS) },
+                    onOpenCloudDecks = { navController.navigate(Routes.CLOUD_DECKS) }
                 )
             }
 
             composable(Routes.TAGS) {
                 TagScreen(container = container, onBack = navController::popBackStack)
+            }
+
+            composable(Routes.SERVER) {
+                ServerScreen(container = container, onBack = navController::popBackStack)
+            }
+
+            composable(Routes.CLOUD_DECKS) {
+                CloudDecksScreen(
+                    container = container,
+                    onBack = navController::popBackStack,
+                    onLogin = { navController.navigate(Routes.SERVER) },
+                    onOpenDeckDetail = { id -> navController.navigate(Routes.myDeck(id)) }
+                )
+            }
+
+            composable(Routes.MY_DECK) { entry ->
+                val deckId = entry.arguments?.getString(Routes.ARG_DECK_ID)?.toLongOrNull() ?: 0L
+                MyDeckDetailScreen(
+                    container = container,
+                    deckId = deckId,
+                    onBack = navController::popBackStack
+                )
             }
 
             composable(Routes.ENHANCE) {
@@ -224,7 +256,8 @@ fun AppNavHost(
                     container = container,
                     onOpenCardFields = { navController.navigate(Routes.CARD_FIELDS) },
                     onOpenDecks = { navController.navigate(Routes.DECKS) },
-                    onOpenStats = { navController.navigate(Routes.STATS) }
+                    onOpenStats = { navController.navigate(Routes.STATS) },
+                    onOpenServer = { navController.navigate(Routes.SERVER) }
                 )
             }
 

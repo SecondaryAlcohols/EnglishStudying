@@ -76,6 +76,22 @@ absent,/ˈæbsənt/,adj.,"缺席的；心不在焉的","ab(离开)+sent(存在)�
 
 完整字段表、列内容规范（变形 / 词根词缀 / 近义词怎么写才能连上关联）、导入行为见 **[docs/import-format.md](docs/import-format.md)**。示例文件：[docs/sample-vocab.csv](docs/sample-vocab.csv)。
 
+## 服务端（可选）
+
+`server/` 是一个局域网自用的后端：**分发词表**，并把学习进度备份到 PostgreSQL。
+需要登录（Argon2 密码 + JWT）：公共词库只读，用户只能改自己名下的词表。
+App 里填 `电脑IP:8000` 就能列出词表、下载导入；进度按增量推送/拉取，换机或重装可原样恢复。
+
+```bash
+cd server
+cp .env.example .env          # 填 PostgreSQL 密码
+uv sync && uv run alembic upgrade head
+uv run python -m app.cli serve --port 8000
+```
+
+技术栈 Python 3.13 / FastAPI / SQLAlchemy 2.1（async）/ psycopg 3 / PostgreSQL 18，
+细节见 **[server/README.md](server/README.md)**。
+
 ## 文档
 
 | 文档 | 内容 |
@@ -83,6 +99,8 @@ absent,/ˈæbsənt/,adj.,"缺席的；心不在焉的","ab(离开)+sent(存在)�
 | [docs/import-format.md](docs/import-format.md) | CSV / JSON 格式、字段对照、列内容规范、导入行为 |
 | [docs/scheduling.md](docs/scheduling.md) | 算法参数、学习流程、计数口径、模糊循环、手动改期、今日进度条 |
 | [docs/architecture.md](docs/architecture.md) | 模块划分、技术栈、数据模型、词语关联、测试范围 |
+| [docs/app-remote.md](docs/app-remote.md) | App 接入服务端的计划（登录 / 下载词表 / 进度同步） |
+| [server/README.md](server/README.md) | 词表服务的部署、接口与同步协议 |
 | [docs/ui/library-redesign.html](docs/ui/library-redesign.html) | 词库界面改版设计稿（四屏，浏览器打开） |
 
 ## 已知限制

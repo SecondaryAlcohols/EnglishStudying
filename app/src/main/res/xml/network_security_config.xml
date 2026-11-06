@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  服务器是局域网里自建的，通常只有 IP、没有证书，所以必须允许明文 HTTP，
+  否则 Android 9+ 会直接拒绝（Cleartext HTTP traffic not permitted）。
+
+  注意：network-security-config 的 <domain> 只认具体域名/IP，**不支持网段**，
+  而用户的服务器 IP 是运行时才知道的，没法提前列出来。所以这里整体放开明文。
+  公网地址仍然可以填 https://，Ktor 会自动走 TLS。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

@@ -16,6 +16,7 @@ import com.alcohol.englishstudying.domain.model.CardFieldConfigDefaults
 import com.alcohol.englishstudying.domain.srs.NewWordOrder
 import com.alcohol.englishstudying.domain.srs.SrsSettings
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
 import org.json.JSONObject
@@ -192,6 +193,36 @@ class SettingsRepository(private val context: Context) {
 
     // ---- 内部工具 ----
 
+    // ---- 自建服务器（登录态） ----
+
+    /** 服务器地址，形如 `http://192.168.1.5:8000`；空表示还没配置。 */
+    val serverUrl: Flow<String> = context.dataStore.data.map { it[Keys.SERVER_URL].orEmpty() }
+
+    val accessToken: Flow<String> = context.dataStore.data.map { it[Keys.SERVER_TOKEN].orEmpty() }
+
+    val serverUserName: Flow<String> = context.dataStore.data.map { it[Keys.SERVER_USER].orEmpty() }
+
+    suspend fun currentServerUrl(): String = serverUrl.first()
+
+    suspend fun currentToken(): String = accessToken.first()
+
+    /** 登录成功：地址、令牌、用户名一次写入，避免只写一半导致「登录了但没地址」。 */
+    suspend fun setServerSession(url: String, token: String, userName: String) {
+        context.dataStore.edit {
+            it[Keys.SERVER_URL] = url
+            it[Keys.SERVER_TOKEN] = token
+            it[Keys.SERVER_USER] = userName
+        }
+    }
+
+    /** 只清令牌和用户名，保留地址。 */
+    suspend fun clearServerToken() {
+        context.dataStore.edit {
+            it.remove(Keys.SERVER_TOKEN)
+            it.remove(Keys.SERVER_USER)
+        }
+    }
+
     private suspend fun putInt(key: Preferences.Key<Int>, value: Int) =
         context.dataStore.edit { it[key] = value }
 
@@ -232,6 +263,11 @@ class SettingsRepository(private val context: Context) {
         val RELEARN_BACKLOG = intPreferencesKey("relearn_backlog")
         val RELEARN_BACKLOG_DAY = longPreferencesKey("relearn_backlog_day")
         val RELEARN_SESSION_LAPSES = intPreferencesKey("relearn_session_lapses")
+
+        // 服务器登录态。刻意不进 srsKeys —— 「重置算法参数」不该让人重新登录。
+        val SERVER_URL = stringPreferencesKey("server_url")
+        val SERVER_TOKEN = stringPreferencesKey("server_token")
+        val SERVER_USER = stringPreferencesKey("server_user")
 
         val srsKeys = listOf(
             DAILY_NEW_LIMIT, DAILY_REVIEW_LIMIT, NEW_WORD_ORDER, LEARNING_STEPS,

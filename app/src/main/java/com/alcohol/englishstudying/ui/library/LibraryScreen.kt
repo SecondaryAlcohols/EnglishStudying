@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.MenuBook
@@ -41,6 +42,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -88,6 +92,7 @@ fun LibraryScreen(
     onOpenDecks: () -> Unit,
     onOpenStats: () -> Unit,
     onOpenTags: () -> Unit,
+    onOpenCloudDecks: () -> Unit,
     viewModel: LibraryViewModel = viewModel(factory = LibraryViewModel.factory(container))
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -97,6 +102,10 @@ fun LibraryScreen(
             TopAppBar(
                 title = { Text("词库") },
                 actions = {
+                    // 进「云端词表」整页：下载、管理自己的词表、公开与分享码都在那边
+                    IconButton(onClick = onOpenCloudDecks) {
+                        Icon(Icons.Filled.CloudDownload, contentDescription = "云端词表")
+                    }
                     IconButton(onClick = onOpenStats) {
                         Icon(Icons.Filled.BarChart, contentDescription = "统计")
                     }
@@ -188,6 +197,7 @@ fun LibraryScreen(
         }
     }
 }
+
 
 @Composable
 private fun SearchAndFilters(

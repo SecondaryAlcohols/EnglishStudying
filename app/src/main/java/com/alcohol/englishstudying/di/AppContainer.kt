@@ -7,6 +7,8 @@ import com.alcohol.englishstudying.data.local.AppDatabase
 import com.alcohol.englishstudying.data.prefs.SettingsRepository
 import com.alcohol.englishstudying.data.repo.DeckRepository
 import com.alcohol.englishstudying.data.repo.RelationRepository
+import com.alcohol.englishstudying.data.remote.RemoteRepository
+import com.alcohol.englishstudying.data.remote.ServerApi
 import com.alcohol.englishstudying.data.repo.StudyRepository
 import com.alcohol.englishstudying.data.repo.UserTagRepository
 import com.alcohol.englishstudying.data.repo.WordRepository
@@ -31,4 +33,14 @@ class AppContainer(context: Context) {
     val userTags: UserTagRepository by lazy { UserTagRepository(database) }
     val importer: WordImporter by lazy { WordImporter(database) }
     val fileReader: WordFileReader by lazy { WordFileReader(appContext) }
+
+    /** 自建服务器：登录、下载词表（进度同步后续再加）。 */
+    val remote: RemoteRepository by lazy {
+        RemoteRepository(
+            api = ServerApi(),
+            settings = settings,
+            importer = importer,
+            relations = relations
+        )
+    }
 }

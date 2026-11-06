@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.AlertDialog
@@ -65,6 +66,7 @@ fun SettingsScreen(
     onOpenCardFields: () -> Unit,
     onOpenDecks: () -> Unit,
     onOpenStats: () -> Unit,
+    onOpenServer: () -> Unit,
     viewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.factory(container))
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -94,6 +96,19 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp)
         ) {
+            // ---- 账号与服务器 ----
+            SectionHeader("账号与服务器")
+            Card(Modifier.fillMaxWidth()) {
+                ListItem(
+                    modifier = Modifier.clickableRow(onOpenServer),
+                    headlineContent = { Text("服务器与账号") },
+                    supportingContent = { Text("登录、退出、切换账号；管理自己的词表") },
+                    leadingContent = { Icon(Icons.Filled.Cloud, contentDescription = null) },
+                    trailingContent = { Text("›", style = MaterialTheme.typography.titleLarge) }
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+
             // ---- 卡片显示：另一个自定义维度 ----
             SectionHeader("卡片显示")
             Card(Modifier.fillMaxWidth()) {
