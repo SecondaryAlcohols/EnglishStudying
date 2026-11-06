@@ -668,7 +668,9 @@ class StudyViewModel(
             // 规则和理由见 DailyPlanBuilder.requeueIndex。
             val index = DailyPlanBuilder.requeueIndex(
                 remaining,
-                wasNew = card.state.state == CardState.NEW,
+                // LEARNING 也属于新词学习流（见 StudyCard.fromNewPool）：没毕业就回队尾，
+                // 否则会插回队首立刻再出现。
+                wasNew = card.fromNewPool,
                 isNew = { it.state.state == CardState.NEW }
             )
             remaining.add(index, card.copy(state = next))

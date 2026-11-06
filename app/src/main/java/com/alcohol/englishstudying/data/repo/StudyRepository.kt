@@ -30,7 +30,19 @@ import java.time.ZoneId
 data class StudyCard(
     val word: WordEntity,
     val state: SrsState
-)
+) {
+    /**
+     * 这张卡是不是「新词学习流」里的（NEW 或 LEARNING）。
+     *
+     * 新词答过一次之后状态就写成 LEARNING，但它在流程上仍然是「新词在走学习步」，
+     * 没毕业的重考要**回队尾**（和伪代码一致）；只有 RELEARNING（旧词忘了退回重学）
+     * 才走复习那一侧「插到第一个新词之前」的规则。
+     * 2026-11-06 实测：只用 `state == NEW` 判断会让 LEARNING 卡插回队首，
+     * 队列里只剩它一张时点模糊会立刻原样再出现（trail 连出 6 次）。
+     */
+    val fromNewPool: Boolean
+        get() = state.state == CardState.NEW || state.state == CardState.LEARNING
+}
 
 data class DailyProgress(
     val dueCount: Int,
